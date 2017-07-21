@@ -1,0 +1,7 @@
+# Copyright 2017 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="085f", \
+OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664", \
+RUN+="/sbin/minijail0 -u cfm-firmware-updaters -g video -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --update"

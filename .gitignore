@@ -1,0 +1,9 @@
+# ignore object files
+*.o
+*.o.depends
+*.pic.*
+*.pie.*
+*.*~
+
+# ignore executable
+/logitech-updater
