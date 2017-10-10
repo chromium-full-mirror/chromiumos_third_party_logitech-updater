@@ -127,7 +127,7 @@ class USBDevice {
    * @param buffer Firmware image buffer.
    * @return  kLogiErrorNoError if update ok, error code otherwise.
    */
-  virtual int performUpdate(std::vector<char> buffer) = 0;
+  virtual int performUpdate(std::vector<char> buffer, bool force) = 0;
 
  protected:
   /**

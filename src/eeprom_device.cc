@@ -4,6 +4,8 @@
 
 #include "eeprom_device.h"
 #include "utilities.h"
+#include <base/logging.h>
+#include <brillo/syslog_logging.h>
 
 constexpr unsigned int kLogiEepromDeviceVersionDataSize = 2;
 constexpr uint16_t kLogiEepromAddressSignatureByte0 = 0x00;
@@ -29,9 +31,8 @@ int EepromDevice::readDeviceVersion(std::string* deviceVersion) {
 
   std::vector<unsigned char> outputData;
   int unitId = GetUnitID(kLogiGuidDeviceInfo);
-  int error = getXuControl(unitId,
-                           kLogiUvcXuDevInfoCsEepromVersion,
-                           &outputData);
+  int error =
+      getXuControl(unitId, kLogiUvcXuDevInfoCsEepromVersion, &outputData);
   if (error)
     return error;
   if (outputData.size() < kLogiEepromDeviceVersionDataSize)
@@ -79,13 +80,11 @@ int EepromDevice::verifyImage(std::vector<char> buffer) {
   // perform some sanity checks
   uint8_t signatureAA = 0x00;
   uint8_t signature55 = 0x00;
-  error = readImageByte(imageBlocks,
-                        kLogiEepromAddressSignatureByte0,
+  error = readImageByte(imageBlocks, kLogiEepromAddressSignatureByte0,
                         &signatureAA);
   if (error)
     return error;
-  error = readImageByte(imageBlocks,
-                        kLogiEepromAddressSignatureByte1,
+  error = readImageByte(imageBlocks, kLogiEepromAddressSignatureByte1,
                         &signature55);
   if (error)
     return error;
@@ -214,32 +213,49 @@ int EepromDevice::sendImage(std::vector<S19Block> imageBlocks) {
   return kLogiErrorNoError;
 }
 
-int EepromDevice::performUpdate(std::vector<char> buffer) {
+int EepromDevice::performUpdate(std::vector<char> buffer, bool force) {
   if (!isOpen)
     return kLogiErrorDeviceNotOpen;
 
+  LOG(INFO) << "Checking EEPROM firmware...";
   std::string deviceVersion;
   std::string imageVersion;
   int error = getDeviceVersion(&deviceVersion);
-  if (error)
+  if (error) {
+    LOG(ERROR) << "Failed to get device version. Error code: " << error;
     return error;
+  }
 
   error = verifyImage(buffer);
-  if (error)
+  if (error) {
+    LOG(ERROR) << "Failed to verify image. Error code: " << error;
     return error;
+  }
 
   error = getImageVersion(buffer, &imageVersion);
-  if (error)
+  if (error) {
+    LOG(ERROR) << "Failed to get image version. Error code: " << error;
     return error;
+  }
 
   // check if update available
   int compareVersion = CompareVersions(deviceVersion, imageVersion);
-  if (compareVersion < 0) {
+  if (compareVersion < 0 || force) {
+    LOG(INFO) << "Updating EEPROM firmware...";
     std::vector<S19Block> imageBlocks;
     error = parseS19(buffer, &imageBlocks);
-    if (error)
+    if (error) {
+      LOG(ERROR) << "Failed to parse image blocks. Error code: " << error;
       return error;
+    }
     error = sendImage(imageBlocks);
+    if (error) {
+      LOG(ERROR) << "Failed to send image. Error code: " << error;
+    } else {
+      LOG(INFO) << "Successfully updated EEPROM firmware.";
+    }
+  } else {
+    LOG(INFO) << "EEPROM firmware is up to date.";
   }
   return error;
 }
@@ -303,9 +319,8 @@ int EepromDevice::writeEepromByte(uint16_t address, uint8_t byte) {
   addressData.push_back(firstByte);
   addressData.push_back(secondByte);
   int unitID = GetUnitID(kLogiGuidTestDebug);
-  int error = setXuControl(unitID,
-                           kLogiEepromUvcXuTestDbgCsEepromAddress,
-                           addressData);
+  int error =
+      setXuControl(unitID, kLogiEepromUvcXuTestDbgCsEepromAddress, addressData);
   if (error)
     return error;
 

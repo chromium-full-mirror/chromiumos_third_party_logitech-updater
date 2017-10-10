@@ -84,7 +84,7 @@ class VideoDevice : public USBDevice {
    * @param buffer Firmware image buffer.
    * @return kLogiErrorNoError if updated ok, error code otherwise.
    */
-  virtual int performUpdate(std::vector<char> buffer);
+  virtual int performUpdate(std::vector<char> buffer, bool force);
 
   /**
    * @brief Reboots the device.

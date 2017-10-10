@@ -103,28 +103,26 @@ bool CompositeDevice::isDevicePresent() {
   return false;
 }
 
-int CompositeDevice::performUpdate() {
+int CompositeDevice::performUpdate(bool force) {
   int error = kLogiErrorUnknown;
   std::shared_ptr<USBDevice> videoDevice;
-  if (!isDeviceUpToDate()) {
-    for (auto device : devices) {
-      std::vector<char> buffer = getImageBuffer(device->deviceType);
-      error = device->performUpdate(buffer);
-      if (error)
-        return error;  // failed to update
-      if (device->deviceType == kLogiDeviceVideo)
-        videoDevice = device;  // get a hold of video device to do reboot later
-    }
-
-    // updated ok, reboot devices
-    for (auto device : devices) {
-      if (device->deviceType != kLogiDeviceVideo)
-        device->closeDevice();  // close all other device before rebooting
-    }
-    videoDevice->rebootDevice();
-    sleep(kLogiRebootingWaitTime);  // wait for device to reboot
-    openDevices();                  // make sure to reopen devices
+  for (auto device : devices) {
+    std::vector<char> buffer = getImageBuffer(device->deviceType);
+    error = device->performUpdate(buffer, force);
+    if (error)
+      return error;  // failed to update
+    if (device->deviceType == kLogiDeviceVideo)
+      videoDevice = device;  // get a hold of video device to do reboot later
   }
+
+  // updated ok, reboot devices
+  for (auto device : devices) {
+    if (device->deviceType != kLogiDeviceVideo)
+      device->closeDevice();  // close all other device before rebooting
+  }
+  videoDevice->rebootDevice();
+  sleep(kLogiRebootingWaitTime);  // wait for device to reboot
+  openDevices();                  // make sure to reopen devices
   return kLogiErrorNoError;
 }
 

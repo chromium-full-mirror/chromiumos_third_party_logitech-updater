@@ -108,7 +108,7 @@ class CompositeDevice {
    * @return kLogiErrorNoError if successfully updated all components, error
    * code otherwise.
    */
-  int performUpdate();
+  int performUpdate(bool force);
 
  private:
   /**

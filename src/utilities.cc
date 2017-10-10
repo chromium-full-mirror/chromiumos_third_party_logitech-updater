@@ -131,8 +131,8 @@ int CompareVersions(std::string version1, std::string version2) {
 
 std::vector<std::string> SplitString(std::string string,
                                      std::string delimiters) {
-  return base::SplitString(
-      string, delimiters, base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
+  return base::SplitString(string, delimiters, base::TRIM_WHITESPACE,
+                           base::SPLIT_WANT_NONEMPTY);
 }
 
 int GetUnitID(std::string guid) {

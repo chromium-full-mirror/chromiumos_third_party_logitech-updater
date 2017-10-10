@@ -49,6 +49,9 @@ void configureLogging(std::string log_file) {
     // Default log to syslog.
     brillo::InitLog(brillo::InitFlags::kLogToSyslog |
                     brillo::InitFlags::kLogToStderrIfTty);
+  } else if (log_file == "stdout") {
+    logging::LoggingSettings logging_settings;
+    logging::InitLogging(logging_settings);
   } else {
     // Logs to file.
     logging::LoggingSettings logging_settings;
@@ -69,6 +72,7 @@ int main(int argc, char** argv) {
   DEFINE_bool(device_version, false, "Show device versions.");
   DEFINE_bool(image_version, false, "Show image versions.");
   DEFINE_bool(update, false, "Perform firmware update.");
+  DEFINE_bool(force, false, "Force firmware update.");
   DEFINE_string(log_to, "", "Specify log file to write messages to.");
   brillo::FlagHelper::Init(argc, argv, "logitech-updater");
 
@@ -133,11 +137,11 @@ int main(int argc, char** argv) {
     // check and perform firmware update
     if (!ptzpro2Device->isDevicePresent()) {
       LOG(ERROR) << "Device not found.";
-    } else if (ptzpro2Device->isDeviceUpToDate()) {
+    } else if (ptzpro2Device->isDeviceUpToDate() && !FLAGS_force) {
       LOG(INFO) << "Firmware is up to date.";
     } else {
       LOG(INFO) << "Updating device ... ";
-      error = ptzpro2Device->performUpdate();
+      error = ptzpro2Device->performUpdate(FLAGS_force);
       if (error) {
         LOG(ERROR) << "Failed to update device.";
       } else {
