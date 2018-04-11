@@ -1,22 +1,21 @@
-// Copyright 2017 The Chromium OS Authors. All rights reserved.
+// Copyright 2018 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "video_device.h"
 #include <base/logging.h>
-#include <brillo/syslog_logging.h>
 #include <fcntl.h>
 #include <linux/usb/video.h>
 #include <linux/uvcvideo.h>
 #include <linux/videodev2.h>
 #include <string.h>
 #include <sys/ioctl.h>
-#include <unistd.h>
 #include <algorithm>
 #include <thread>
 #include "utilities.h"
 
 const char kDefaultVideoDeviceMountPoint[] = "/sys/class/video4linux";
+const char kDefaultVideoDevicePoint[] = "/device/..";
 constexpr unsigned int kLogiDeviceVersionDataSize = 4;
 constexpr unsigned char kLogiCameraVersionSelector = 1;
 constexpr unsigned int kLogiVideoImageVersionMaxSize = 32;
@@ -24,7 +23,6 @@ constexpr unsigned char kLogiVideoAitInitiateSetMMPData = 1;
 constexpr unsigned char kLogiVideoAitFinalizeSetMMPData = 1;
 // 2 byte for get len query.
 constexpr unsigned int kDefaultUvcGetLenQueryControlSize = 2;
-
 constexpr unsigned int kLogiVideoAitSendImageInitialOffset = 0;
 constexpr unsigned int kLogiDefaultAitSleepIntervalMs = 2000;
 constexpr unsigned char kLogiUvcXuAitCustomCsGetMmpResult = 0x05;
@@ -43,155 +41,131 @@ VideoDevice::VideoDevice(std::string pid) : USBDevice(pid, kLogiDeviceVideo) {}
 
 VideoDevice::VideoDevice(std::string pid, int type) : USBDevice(pid, type) {}
 
-VideoDevice::~VideoDevice() {
-  closeDevice();
+VideoDevice::~VideoDevice() {}
+
+bool VideoDevice::IsPresent() {
+  std::vector<std::string> dev_paths = FindDevices(
+      kDefaultVideoDeviceMountPoint, kDefaultVideoDevicePoint, usb_pid_);
+  return ((dev_paths.size() > 0) ? true : false);
 }
 
-std::vector<std::string> VideoDevice::findDevices() {
-  std::vector<std::string> devicePaths;
-
-  if (usbPid.empty())
-    return devicePaths;
-
-  std::vector<std::string> contents;
-  bool getOk = GetDirectoryContents(kDefaultVideoDeviceMountPoint, &contents);
-  if (!getOk)
-    return devicePaths;  // failed to get contents of mount point
-
-  for (auto const& content : contents) {
-    if (content.compare(".") == 0 || content.compare("..") == 0)
-      continue;  // ignore . and .. directory
-
-    std::string videoDir =
-        std::string(kDefaultVideoDeviceMountPoint) + "/" + content;
-
-    // read mount point device vid & pid here
-    std::string productIdPath = videoDir + "/device/../idProduct";
-    std::string vendorIdPath = videoDir + "/device/../idVendor";
-
-    std::string vendorID;
-    std::string productID;
-    if (!ReadFileContent(vendorIdPath, &vendorID))
-      continue;  // failed to read vendor ID
-
-    if (!IsLogitechVendorID(vendorID))
-      continue;  // not Logitech device
-
-    if (!ReadFileContent(productIdPath, &productID))
-      continue;  // failed to read product ID
-
-    int pidNum = 0;
-    if (!ConvertHexStringToInt(productID, &pidNum))
-      continue;  // failed to convert product ID to int
-
-    int usbPidNum = 0;
-    if (!ConvertHexStringToInt(usbPid, &usbPidNum))
-      continue;
-
-    if (pidNum == usbPidNum) {
-      // found device, add it to the device paths
-      std::string devPath = "/dev/" + content;
-      devicePaths.push_back(devPath);
-    }
+int VideoDevice::OpenDevice() {
+  if (usb_pid_.empty()) {
+    LOG(ERROR) << "Failed to open device. USB PID is not set.";
+    return kLogiErrorUsbPidNotFound;
   }
-  return devicePaths;
-}
+  std::vector<std::string> dev_paths = FindDevices(
+      kDefaultVideoDeviceMountPoint, kDefaultVideoDevicePoint, usb_pid_);
+  if (dev_paths.empty())
+    return kLogiErrorUsbPidNotFound;
 
-int VideoDevice::openDevice() {
-  if (usbPid.empty())
-    return kLogiErrorUsbPidNotFound;
-  std::vector<std::string> devPaths = findDevices();
-  if (devPaths.size() == 0)
-    return kLogiErrorUsbPidNotFound;
-  if (devPaths.size() > 1)
+  // For video devices with 2 pins like BRIO, it mounts as 2 separate
+  // /dev/video, check and returns multiple devices only if they are not on the
+  // same usb bus.
+  std::vector<std::string> bus_paths =
+      FindUsbBus(kLogiVendorIdString, usb_pid_);
+  if (dev_paths.size() > 1 && bus_paths.size() > 1) {
+    LOG(ERROR) << "Failed to open device. Multiple device found.";
     return kLogiErrorMultipleDevicesFound;
-  const char* devPath = devPaths.at(0).c_str();
-  int fd = open(devPath, O_RDWR | O_NONBLOCK, 0);
-  if (fd == -1)  // open() return -1 if failed....
+  }
+  const char* dev_path = dev_paths.at(0).c_str();
+  int fd = open(dev_path, O_RDWR | O_NONBLOCK, 0);
+  if (fd == -1) {
+    LOG(ERROR) << "Failed to open device. Open file failed.";
     return kLogiErrorOpenDeviceFailed;
-  // everything is ok
-  isOpen = true;
-  fileDescriptor = fd;
+  }
+  is_open_ = true;
+  file_descriptor_ = fd;
   return kLogiErrorNoError;
 }
 
-void VideoDevice::closeDevice() {
-  if (fileDescriptor >= 0)
-    close(fileDescriptor);
-
-  fileDescriptor = -1;
-  isOpen = false;
-}
-
-int VideoDevice::getDeviceName(std::string* deviceName) {
-  if (!isOpen)
+int VideoDevice::GetDeviceName(std::string* device_name) {
+  if (!is_open_)
     return kLogiErrorDeviceNotOpen;
-
-  // get device name here
-  struct v4l2_capability videoCap;
-  int error = ioctl(fileDescriptor, VIDIOC_QUERYCAP, &videoCap);
-  if (error < 0)
+  struct v4l2_capability video_cap;
+  int error = ioctl(file_descriptor_, VIDIOC_QUERYCAP, &video_cap);
+  if (error < 0)  // ioctl return -1 on failure.
     return kLogiErrorIOControlOperationFailed;
-  std::string str(videoCap.card, videoCap.card + sizeof(videoCap.card) /
-                                                     sizeof(videoCap.card[0]));
-
-  *deviceName = str;
+  std::string str(
+      video_cap.card,
+      video_cap.card + sizeof(video_cap.card) / sizeof(video_cap.card[0]));
+  *device_name = str;
   return kLogiErrorNoError;
 }
 
-int VideoDevice::readDeviceVersion(std::string* deviceVersion) {
-  if (!isOpen)
+int VideoDevice::IsLogicool(bool* is_logicool) {
+  if (!is_open_)
     return kLogiErrorDeviceNotOpen;
-  std::vector<unsigned char> outputData;
-  int unitId = GetUnitID(kLogiGuidDeviceInfo);
-  int error = getXuControl(unitId, kLogiCameraVersionSelector, &outputData);
+  // On video device, checks if device's name contains Logicool string.
+  std::string name;
+  int error = GetDeviceName(&name);
   if (error)
     return error;
-  if (outputData.size() < kLogiDeviceVersionDataSize)
-    return kLogiErrorInvalidDeviceVersionDataSize;
 
+  if (ContainString(name, "logicool", false)) {
+    *is_logicool = true;
+    return kLogiErrorNoError;
+  }
+
+  // Not Logicool, checks if Logitech. There might be Logi only.
+  if (ContainString(name, "logitech", false)) {
+    *is_logicool = false;
+    return kLogiErrorNoError;
+  }
+
+  // Might be Logi (Logi Group), or something unknown.
+  return kLogiErrorBrandCheckFailed;
+}
+
+int VideoDevice::ReadDeviceVersion(std::string* device_version) {
+  if (!is_open_)
+    return kLogiErrorDeviceNotOpen;
+  std::vector<unsigned char> output_data;
+  int unit_id = GetUnitID(kLogiGuidDeviceInfo);
+  int error = GetXuControl(unit_id, kLogiCameraVersionSelector, &output_data);
+  if (error)
+    return error;
+  if (output_data.size() < kLogiDeviceVersionDataSize)
+    return kLogiErrorInvalidDeviceVersionDataSize;
   // little-endian data
-  int major = (int)outputData[1];
-  int minor = (int)outputData[0];
-  int build = (int)((outputData[3] << 8) | outputData[2]);
-  *deviceVersion = GetDeviceStringVersion(major, minor, build);
+  int major = static_cast<int>(output_data[1]);
+  int minor = static_cast<int>(output_data[0]);
+  int build = static_cast<int>((output_data[3] << 8) | output_data[2]);
+  *device_version = GetDeviceStringVersion(major, minor, build);
   return kLogiErrorNoError;
 }
 
-int VideoDevice::getImageVersion(std::vector<char> buffer,
-                                 std::string* imageVersion) {
+int VideoDevice::GetImageVersion(std::vector<uint8_t> buffer,
+                                 std::string* image_version) {
   if (buffer.empty())
     return kLogiErrorImageBufferReadFailed;
-
   // Find the start of the version string.
   // The version information is located at an arbitrary position coded in the
   // following format: VERSIONMAGIC<x.y.z> As a sanity check the length of the
   // version "x.y.z" string may not exceed 32 characters.
-  std::vector<uint8_t> versionMagic = {'V', 'E', 'R', 'S', 'I', 'O', 'N',
-                                       'M', 'A', 'G', 'I', 'C', '<'};
+  std::vector<uint8_t> version_magic = {'V', 'E', 'R', 'S', 'I', 'O', 'N',
+                                        'M', 'A', 'G', 'I', 'C', '<'};
   auto iter = std::search(std::begin(buffer), std::end(buffer),
-                          std::begin(versionMagic), std::end(versionMagic));
+                          std::begin(version_magic), std::end(version_magic));
   if (iter == std::end(buffer))
     return kLogiErrorImageVersionNotFound;
-
   // Copy all characters until the closing '>' marker.
   std::string version;
-  std::advance(iter, versionMagic.size());
+  std::advance(iter, version_magic.size());
   while (iter != std::end(buffer) && *iter != '>') {
     version.push_back(*iter);
     if (version.size() > kLogiVideoImageVersionMaxSize)
       return kLogiErrorImageVersionExceededMaxSize;
     ++iter;
   }
-
-  *imageVersion = version;
+  *image_version = version;
   return kLogiErrorNoError;
 }
 
-int VideoDevice::verifyImage(std::vector<char> buffer) {
+int VideoDevice::VerifyImage(std::vector<uint8_t> buffer) {
   if (buffer.empty())
     return kLogiErrorImageBufferReadFailed;
-  std::vector<char> signature = {'A', 'I', 'T', '8', '4', '2'};
+  std::vector<uint8_t> signature = {'A', 'I', 'T', '8', '4', '2'};
   if (buffer.size() < signature.size())
     return kLogiErrorImageVerificationFailed;
   auto iter =
@@ -202,146 +176,133 @@ int VideoDevice::verifyImage(std::vector<char> buffer) {
   return kLogiErrorNoError;
 }
 
-int VideoDevice::aitInitiateUpdate() {
-  if (!isOpen)
+int VideoDevice::AitInitiateUpdate() {
+  if (!is_open_)
     return kLogiErrorDeviceNotOpen;
-
   // Disclaimer: Any magic numbers come directly from the FlashGordon code.
-
-  // set the MMP
-  std::vector<unsigned char> mmpSetData = {kLogiAitSetMmpCmdFwBurning,
-                                           0,
-                                           0,
-                                           kLogiVideoAitInitiateSetMMPData,
-                                           0,
-                                           0,
-                                           0,
-                                           0};
-  return aitInitiateUpdateWithData(mmpSetData);
+  std::vector<unsigned char> data = {kLogiAitSetMmpCmdFwBurning,
+                                     0,
+                                     0,
+                                     kLogiVideoAitInitiateSetMMPData,
+                                     0,
+                                     0,
+                                     0,
+                                     0};
+  return AitInitiateUpdateWithData(data);
 }
 
-int VideoDevice::aitSendImage(std::vector<char> buffer) {
-  if (!isOpen)
+int VideoDevice::AitSendImage(std::vector<uint8_t> buffer) {
+  if (!is_open_)
     return kLogiErrorDeviceNotOpen;
   if (buffer.empty())
     return kLogiErrorImageBufferReadFailed;
-
-  return aitSendImageWithOffset(buffer, kLogiVideoAitSendImageInitialOffset);
+  return AitSendImageWithOffset(buffer, kLogiVideoAitSendImageInitialOffset);
 }
 
-int VideoDevice::aitFinalizeUpdate() {
+int VideoDevice::AitFinalizeUpdate() {
   // Disclaimer: any magic numbers and sleeps originate in the FlashGordon code.
-  if (!isOpen)
+  if (!is_open_)
     return kLogiErrorDeviceNotOpen;
-
-  // set MMP
-  std::vector<unsigned char> setData = {kLogiAitSetMmpCmdFwBurning,
-                                        kLogiVideoAitFinalizeSetMMPData,
-                                        0,
-                                        0,
-                                        0,
-                                        0,
-                                        0,
-                                        0};  // always 8 bytes
-  return aitFinalizeUpdateWithData(setData);
+  std::vector<unsigned char> data = {kLogiAitSetMmpCmdFwBurning,
+                                     kLogiVideoAitFinalizeSetMMPData,
+                                     0,
+                                     0,
+                                     0,
+                                     0,
+                                     0,
+                                     0};
+  return AitFinalizeUpdateWithData(data);
 }
 
-int VideoDevice::rebootDevice() {
-  if (!isOpen)
+int VideoDevice::RebootDevice() {
+  if (!is_open_)
     return kLogiErrorDeviceNotOpen;
-
-  int unitId = GetUnitID(kLogiGuidPeripheralControl);
+  int unit_id = GetUnitID(kLogiGuidPeripheralControl);
   std::vector<unsigned char> data = {1};
-  return setXuControl(unitId, kLogiUvcXuAitCustomReboot, data);
+
+  return SetXuControl(unit_id, kLogiUvcXuAitCustomReboot, data);
 }
 
-int VideoDevice::aitInitiateUpdateWithData(std::vector<unsigned char> mmpData) {
-  if (!isOpen)
+int VideoDevice::AitInitiateUpdateWithData(
+    std::vector<unsigned char> mmp_data) {
+  if (!is_open_)
     return kLogiErrorDeviceNotOpen;
-
   // Disclaimer: Any magic numbers come directly from the FlashGordon code.
-
-  // set the MMP
-  int unitId = GetUnitID(kLogiGuidAITCustom);
-  int error = setXuControl(unitId, kLogiUvcXuAitCustomCsSetMmp, mmpData);
+  int unit_id = GetUnitID(kLogiGuidAITCustom);
+  int error = SetXuControl(unit_id, kLogiUvcXuAitCustomCsSetMmp, mmp_data);
   if (error) {
-    LOG(ERROR) << "Failed to set command for AIT initialization. Error code: "
+    LOG(ERROR) << "Failed to set command for AIT initialization. Error: "
                << error;
     return error;
   }
-
-  // get the MMP
-  std::vector<unsigned char> mmpGetData;
-  error = getXuControl(unitId, kLogiUvcXuAitCustomCsGetMmpResult, &mmpGetData);
+  std::vector<unsigned char> mmp_get_data;
+  error =
+      GetXuControl(unit_id, kLogiUvcXuAitCustomCsGetMmpResult, &mmp_get_data);
   if (error) {
-    LOG(ERROR) << "Failed to get result for AIT initialization. Error code: "
+    LOG(ERROR) << "Failed to get result for AIT initialization. Error: "
                << error;
     return error;
   }
-  if (mmpGetData.empty() || mmpGetData[0] != 0) {
+  if (mmp_get_data.empty() || mmp_get_data[0] != 0) {
     LOG(ERROR) << "Failed to initialize AIT update. Invalid result data.";
     return kLogiErrorVideoDeviceAitInitiateGetDataFailed;
   }
-
   return kLogiErrorNoError;
 }
 
-int VideoDevice::aitSendImageWithOffset(std::vector<char> buffer,
+int VideoDevice::AitSendImageWithOffset(std::vector<uint8_t> buffer,
                                         unsigned int offset) {
-  if (!isOpen)
+  if (!is_open_)
     return kLogiErrorDeviceNotOpen;
   if (buffer.empty())
     return kLogiErrorImageBufferReadFailed;
 
-  int unitId = GetUnitID(kLogiGuidAITCustom);
-  unsigned int remainingSize = buffer.size() - offset;
-  while (remainingSize > 0) {
-    // get the blockSize
-    unsigned int blockSize =
-        std::min<unsigned int>(remainingSize, kLogiDefaultImageBlockSize);
+  int unit_id = GetUnitID(kLogiGuidAITCustom);
+  unsigned int remaining_size = buffer.size() - offset;
+  while (remaining_size > 0) {
+    unsigned int block_size =
+        std::min<unsigned int>(remaining_size, kLogiDefaultImageBlockSize);
 
     // prepare the blockData
     std::vector<unsigned char> data(kLogiDefaultImageBlockSize);
     std::fill(std::begin(data), std::end(data), 0);
-    std::copy(buffer.cbegin() + offset, buffer.cbegin() + offset + blockSize,
+    std::copy(buffer.cbegin() + offset, buffer.cbegin() + offset + block_size,
               std::begin(data));
 
-    int error = setXuControl(unitId, kLogiUvcXuAitCustomCsSetFwData, data);
+    int error = SetXuControl(unit_id, kLogiUvcXuAitCustomCsSetFwData, data);
     if (error) {
       LOG(ERROR) << "Failed to send block data at offset: " << offset
-                 << ". Error code: " << error;
+                 << ". Error: " << error;
       return error;
     }
-    offset += blockSize;
-    remainingSize -= blockSize;
+    offset += block_size;
+    remaining_size -= block_size;
   }
   return kLogiErrorNoError;
 }
 
-int VideoDevice::aitFinalizeUpdateWithData(std::vector<unsigned char> mmpData) {
+int VideoDevice::AitFinalizeUpdateWithData(
+    std::vector<unsigned char> mmp_data) {
   // Disclaimer: any magic numbers and sleeps originate in the FlashGordon code.
-  if (!isOpen)
+  if (!is_open_)
     return kLogiErrorDeviceNotOpen;
-
-  // set MMP
-  int unitId = GetUnitID(kLogiGuidAITCustom);
-  int error = setXuControl(unitId, kLogiUvcXuAitCustomCsSetMmp, mmpData);
+  int unit_id = GetUnitID(kLogiGuidAITCustom);
+  int error = SetXuControl(unit_id, kLogiUvcXuAitCustomCsSetMmp, mmp_data);
   if (error) {
-    LOG(ERROR) << "Failed to set command for AIT finalization. Error code: "
+    LOG(ERROR) << "Failed to set command for AIT finalization. Error: "
                << error;
     return error;
   }
 
-  // get MMP data
-  // Poll until the device returns either success or failure.
-  auto durationMs = 0;
+  // Get MMP data. Poll until the device returns either success or failure.
+  auto duration_ms = 0;
   const auto doSleep = [&](int ms) {
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
-    durationMs += ms;
+    duration_ms += ms;
   };
 
   // This is the way AIT chipset is finalized (based on AIT finalizing method).
-  // Try to poll for burning fw result or return failure if hit max polling
+  // Try to poll for burning fw result or return failure if it hits max polling
   // duration.
   for (int pass = 0;; pass++) {
     std::vector<unsigned char> data;
@@ -349,16 +310,15 @@ int VideoDevice::aitFinalizeUpdateWithData(std::vector<unsigned char> mmpData) {
 
     doSleep(kLogiDefaultAitSleepIntervalMs);
     // Sometimes on a very fast cpu, AIT chip returns error when querying
-    // extension control unit on first time. If fails, attempt to retry for 3
+    // extension control unit on first time. If it fails, attempt to retry for 3
     // times before returning error.
     do {
-      error = getXuControl(unitId, kLogiUvcXuAitCustomCsGetMmpResult, &data);
+      error = GetXuControl(unit_id, kLogiUvcXuAitCustomCsGetMmpResult, &data);
       if (error) {
-        LOG(ERROR) << "Failed to get result for AIT finalization. Error code: "
+        LOG(ERROR) << "Failed to get result for AIT finalization. Error: "
                    << error << ". Attempt to retry: " << attempts;
         doSleep(kLogiDefaultAitSleepIntervalMs);
       }
-
       attempts--;
     } while (attempts > 0 && error);
 
@@ -367,14 +327,14 @@ int VideoDevice::aitFinalizeUpdateWithData(std::vector<unsigned char> mmpData) {
       return kLogiErrorImageBurningFinalizeFailed;
     }
 
-    // process the response
+    // process the response.
     if (data.size() > 0) {
       if (data[0] == kLogiDefaultAitSuccessValue) {
         // If there is not positive response from the device that the flash was
-        // written  estimate the time needed plus a time buffer to determine
+        // written, estimate the time needed plus a time buffer to determine
         // when the flash write process has completed.  In this case, time
-        // buffer is about 8s for the flash write operation to complete  This is
-        // done using both device spec. and stress testings.
+        // buffer is about 8s for the flash write operation to complete. This is
+        // done using both device spec and stress testings.
         if (pass == 0)
           doSleep(kLogiDefaultAitFirstPassSleepIntervalMs);
         break;
@@ -383,7 +343,7 @@ int VideoDevice::aitFinalizeUpdateWithData(std::vector<unsigned char> mmpData) {
         return kLogiErrorImageBurningFinalizeFailed;
       }
     }
-    if (durationMs > kLogiDefaultAitFinalizeMaxPollingDurationMs) {
+    if (duration_ms > kLogiDefaultAitFinalizeMaxPollingDurationMs) {
       // In case device never returns 0x82 or 0x00, bail out.
       LOG(ERROR) << "Failed to finalize AIT update. Checking result timeout.";
       return kLogiErrorImageBurningFinalizeFailed;
@@ -392,133 +352,119 @@ int VideoDevice::aitFinalizeUpdateWithData(std::vector<unsigned char> mmpData) {
   return kLogiErrorNoError;
 }
 
-int VideoDevice::performUpdate(std::vector<char> buffer, bool force) {
-  if (!isOpen)
+int VideoDevice::PerformUpdate(std::vector<uint8_t> buffer,
+                               std::vector<uint8_t> secure_header,
+                               bool* did_update) {
+  *did_update = false;
+  if (!is_open_)
     return kLogiErrorDeviceNotOpen;
 
-  if (deviceType == kLogiDeviceVideo) {
-    LOG(INFO) << "Updating video firmware...";
-  } else if (deviceType == kLogiDeviceMcu2) {
-    LOG(INFO) << "Updating MCU2 firmware...";
+  std::string name;
+  if (device_type_ == kLogiDeviceVideo) {
+    name = "video";
+  } else if (device_type_ == kLogiDeviceMcu2) {
+    name = "mcu2";
   }
 
-  std::string deviceVersion;
-  std::string imageVersion;
-  int error = getDeviceVersion(&deviceVersion);
-  if (error)
+  LOG(INFO) << "Checking " << name << " firmware...";
+  bool should_update;
+  int error = CheckForUpdate(buffer, &should_update);
+  if (error || !should_update)
     return error;
 
-  error = verifyImage(buffer);
+  LOG(INFO) << name << " firmware is not up to date. Updating firmware...";
+
+  error = AitInitiateUpdate();
   if (error) {
-    LOG(ERROR) << "Failed to verify image. Error code: " << error;
+    LOG(ERROR) << "Failed to initiate update. Error: " << error;
     return error;
   }
-
-  error = getImageVersion(buffer, &imageVersion);
-  if (error)
+  error = AitSendImage(buffer);
+  if (error) {
+    LOG(ERROR) << "Failed to send image. Error: " << error;
     return error;
-
-  // check if update available
-  int compareVersion = CompareVersions(deviceVersion, imageVersion);
-  if (compareVersion < 0 || force) {
-    // initiate AIT update
-    error = aitInitiateUpdate();
-    if (error) {
-      LOG(ERROR) << "Failed to initilize update. Error code: " << error;
-      return error;
-    }
-
-    // send image
-    error = aitSendImage(buffer);
-    if (error)
-      return error;
-
-    // finalize AIT update
-    error = aitFinalizeUpdate();
-    if (error) {
-      LOG(ERROR) << "Failed to finalize update. Error code: " << error;
-    } else {
-      LOG(INFO) << "Successfully updated firmware.";
-    }
+  }
+  error = AitFinalizeUpdate();
+  if (error) {
+    LOG(ERROR) << "Failed to finalize image. Error: " << error;
+  } else {
+    LOG(INFO) << "Successfully updated " << name << " firmware.";
+    *did_update = true;
   }
   return error;
 }
 
-int VideoDevice::setXuControl(unsigned char unitId,
-                              unsigned char controlSelector,
+int VideoDevice::SetXuControl(unsigned char unit_id,
+                              unsigned char control_selector,
                               std::vector<unsigned char> data) {
-  if (!isOpen)
+  if (!is_open_)
     return kLogiErrorDeviceNotOpen;
-
-  if (unitId < 0)
+  if (unit_id < 0)
     return kLogiErrorXuUnitIdInvalid;
 
-  struct uvc_xu_control_query controlQuery;
-  controlQuery.unit = static_cast<uint8_t>(unitId);
-  controlQuery.selector = static_cast<uint8_t>(controlSelector);
-  controlQuery.query = UVC_SET_CUR;
-  controlQuery.size = data.size();
-  controlQuery.data = data.data();
+  struct uvc_xu_control_query control_query;
+  control_query.unit = static_cast<uint8_t>(unit_id);
+  control_query.selector = static_cast<uint8_t>(control_selector);
+  control_query.query = UVC_SET_CUR;
+  control_query.size = data.size();
+  control_query.data = data.data();
   // A few ioctl requests use return value as an output parameter
-  // and return a nonnegative value on success, so should check
+  // and return a nonnegative value on success, so we should check
   // for real error before returning.
-  int error = ioctl(fileDescriptor, UVCIOC_CTRL_QUERY, &controlQuery);
+  int error = ioctl(file_descriptor_, UVCIOC_CTRL_QUERY, &control_query);
   if (error < 0)
     return kLogiErrorIOControlOperationFailed;
   return kLogiErrorNoError;
 }
 
-int VideoDevice::getXuControl(unsigned char unitId,
-                              unsigned char controlSelector,
+int VideoDevice::GetXuControl(unsigned char unit_id,
+                              unsigned char control_selector,
                               std::vector<unsigned char>* data) {
-  if (!isOpen)
+  if (!is_open_)
     return kLogiErrorDeviceNotOpen;
-
-  if (unitId < 0)
+  if (unit_id < 0)
     return kLogiErrorXuUnitIdInvalid;
-
-  int dataLen;
-  int error = queryDataSize(unitId, controlSelector, &dataLen);
+  int data_len;
+  int error = QueryDataSize(unit_id, control_selector, &data_len);
   if (error)
     return error;
-  uint8_t queryData[dataLen];
-  memset(queryData, '\0', sizeof(queryData));
 
-  struct uvc_xu_control_query controlQuery;
-  controlQuery.unit = unitId;
-  controlQuery.selector = controlSelector;
-  controlQuery.query = UVC_GET_CUR;
-  controlQuery.size = dataLen;
-  controlQuery.data = queryData;
-  error = ioctl(fileDescriptor, UVCIOC_CTRL_QUERY, &controlQuery);
+  uint8_t query_data[data_len];
+  memset(query_data, 0, sizeof(query_data));
+  struct uvc_xu_control_query control_query;
+  control_query.unit = unit_id;
+  control_query.selector = control_selector;
+  control_query.query = UVC_GET_CUR;
+  control_query.size = data_len;
+  control_query.data = query_data;
+  error = ioctl(file_descriptor_, UVCIOC_CTRL_QUERY, &control_query);
   if (error < 0)
     return kLogiErrorIOControlOperationFailed;
-
-  for (int i = 0; i < dataLen; i++) {
-    data->push_back(queryData[i]);
+  for (int i = 0; i < data_len; i++) {
+    data->push_back(query_data[i]);
   }
   return kLogiErrorNoError;
 }
 
-int VideoDevice::queryDataSize(unsigned char unitId,
-                               unsigned char controlSelector,
-                               int* dataSize) {
-  if (!isOpen)
+int VideoDevice::QueryDataSize(unsigned char unit_id,
+                               unsigned char control_selector,
+                               int* data_size) {
+  if (!is_open_)
     return kLogiErrorDeviceNotOpen;
 
-  uint8_t sizeData[kDefaultUvcGetLenQueryControlSize];
-  struct uvc_xu_control_query sizeQuery;
-  sizeQuery.unit = unitId;
-  sizeQuery.selector = controlSelector;
-  sizeQuery.query = UVC_GET_LEN;
-  sizeQuery.size = kDefaultUvcGetLenQueryControlSize;
-  sizeQuery.data = sizeData;
-  int error = ioctl(fileDescriptor, UVCIOC_CTRL_QUERY, &sizeQuery);
+  uint8_t size_data[kDefaultUvcGetLenQueryControlSize];
+  struct uvc_xu_control_query size_query;
+  size_query.unit = unit_id;
+  size_query.selector = control_selector;
+  size_query.query = UVC_GET_LEN;
+  size_query.size = kDefaultUvcGetLenQueryControlSize;
+  size_query.data = size_data;
+  int error = ioctl(file_descriptor_, UVCIOC_CTRL_QUERY, &size_query);
   if (error < 0)
     return kLogiErrorIOControlOperationFailed;
 
   // convert the data byte to int
-  int size = (sizeData[1] << 8) | (sizeData[0]);
-  *dataSize = size;
+  int size = static_cast<int>((size_data[1] << 8) | (size_data[0]));
+  *data_size = size;
   return kLogiErrorNoError;
 }

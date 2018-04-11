@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium OS Authors. All rights reserved.
+// Copyright 2018 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,26 +11,42 @@
 
 enum {
   kLogiErrorNoError = 0,
-  // device errors
+  // Device errors.
   kLogiErrorUsbPidNotFound,
+  kLogiErrorUsbDfuPidNotFound,
   kLogiErrorMultipleDevicesFound,
-  kLogiErrorDeviceNotOpen,
-  kLogiErrorOpenDeviceFailed,
+  kLogiErrorMultipleDevicesDfuModeFound,
+  kLogiErrorDeviceNotOpen,     // Device present but not opened.
+  kLogiErrorDeviceNotPresent,  // Device not present.
+  kLogiErrorOpenDeviceFailed,  // Device present but failed to open.
   kLogiErrorDeviceRebootFailed,
   kLogiErrorInvalidDeviceVersionDataSize,
-  // binary image errors
+  kLogiErrorDeviceNameNotAvailable,
+  kLogiErrorGetDfuApiVersionFailed,
+  kLogiErrorSetDeviceToDfuModeFailed,
+  kLogiErrorWaitForDfuDeviceReopenFailed,
+  kLogiErrorWaitForHidDeviceReopenFailed,
+  kLogiErrorBrandCheckFailed,
+  kLogiErrorBrandMismatched,
+  // Binary image errors.
   kLogiErrorImageBufferReadFailed,
   kLogiErrorImageVersionNotFound,
   kLogiErrorImageVersionExceededMaxSize,
+  kLogiErrorImageVersionSizeTooShort,
   kLogiErrorImageVerificationFailed,
   kLogiErrorImageBurningFinalizeFailed,
   kLogiErrorParseS19BinaryFailed,
   kLogiErrorReadS19ImageByteFailed,
   kLogiErrorSendImageFailed,
-  // I/O operation errors
+  kLogiErrorVerifyUpdatedImageFailed,
+  // I/O operation errors.
   kLogiErrorXuUnitIdInvalid,
   kLogiErrorVideoDeviceAitInitiateGetDataFailed,
   kLogiErrorIOControlOperationFailed,
+  kLogiErrorIOControlInvalidDataSize,
+  // Sig validation errors.
+  kLogiErrorSignatureValidationFailed,
+  kLogiErrorInvalidBleNameSize,
   kLogiErrorUnknown
 };
 
@@ -47,13 +63,17 @@ enum {
  */
 class USBDevice {
  public:
-  std::string usbPid;  // USB product id string.
-  int deviceType;  // Device type: video, eeprom, mcu2 or other type. This is
-                   // convenient to get the versions/name from composite device.
-
+  // USB product id string.
+  std::string usb_pid_;
+  // Device type: video, eeprom, mcu2 or other type. This is convenient to get
+  // the versions/name from composite device.
+  int device_type_;
+  // Force update without checking version.
+  bool force_update_;
  protected:
-  int fileDescriptor;
-  bool isOpen;
+  int file_descriptor_;
+  // Flag to check if the device is being opened.
+  bool is_open_;
 
  protected:
   /**
@@ -68,73 +88,91 @@ class USBDevice {
 
   /**
    * @brief Gets the device version. Implement readDeviceVersion to read the
-   * device version.
-   * @param deviceVersion Output device version string.
-   * @return kLogiErrorNoError if failed, error code otherwise.
+   * device.
+   * @param device_version Output device version string.
+   * @return kLogiErrorNoError if succeeded, error code otherwise.
    */
-  virtual int getDeviceVersion(std::string* deviceVersion);
+  virtual int GetDeviceVersion(std::string* device_version);
 
   /**
-   * @brief Finds the device with usbPid & usbVid. To be implemented by
-   * subclass.
-   * @return list of device paths.
+   * @brief Closes the device.
    */
-  virtual std::vector<std::string> findDevices() = 0;
+  virtual void CloseDevice();
 
   /**
-   * @brief Opens the device. To be implemented by subclass.
+   * @brief Opens the device.
    * @return kLogiErrorNoError if open ok, error code otherwise.
    */
-  virtual int openDevice() = 0;
+  virtual int OpenDevice() = 0;
 
   /**
-   * @brief Closes the device. To be implemented by subclass.
+   * @brief Checks if the device is present.
    */
-  virtual void closeDevice() = 0;
+  virtual bool IsPresent() = 0;
 
   /**
-   * @brief Gets the device name. To be implemented by subclass
-   * @param deviceName Output device name.
-   * @return kLogiErrorNoError if gets ok, error code otherwise.
+   * @brief Gets the device name.
+   * @param device_name Output device name.
+   * @return kLogiErrorNoError if succeeded, error code otherwise.
    */
-  virtual int getDeviceName(std::string* deviceName) = 0;
+  virtual int GetDeviceName(std::string* device_name) = 0;
 
   /**
-   * @brief Gets the binary image version. To be implemented by subclass
-   * @param buffer The image buffer to read from
-   * @param imageVersion Output device version string.
-   * @return kLogiErrorNoError if gets ok, error code otherwise.
+   * @brief Gets the binary image version.
+   * @param buffer The image buffer to read from.
+   * @param image_version Output device version string.
+   * @return kLogiErrorNoError if succeeded, error code otherwise.
    */
-  virtual int getImageVersion(std::vector<char> buffer,
-                              std::string* imageVersion) = 0;
+  virtual int GetImageVersion(std::vector<uint8_t> buffer,
+                              std::string* image_version) = 0;
 
   /**
-   * @brief Verifies the image to make sure it's secure. To be implemented by
-   * subclass.
+   * @brief Verifies the image to make sure it's secure.
    * @param buffer The image buffer to verify.
    * @return kLogiErrorNoError if verified ok, error code otherwise.
    */
-  virtual int verifyImage(std::vector<char> buffer) = 0;
+  virtual int VerifyImage(std::vector<uint8_t> buffer) = 0;
 
   /**
-   * @brief Reboots the device. To be implemented by subclass
+   * @brief Reboots the device.
    * @return kLogiErrorNoError if rebooted ok, error code otherwise.
    */
-  virtual int rebootDevice() = 0;
+  virtual int RebootDevice() = 0;
 
   /**
-   * @brief Performs update. To be implemented by subclass.
-   * @param buffer Firmware image buffer.
-   * @return  kLogiErrorNoError if update ok, error code otherwise.
+   * @brief Check if the device firmware is Logicool.
+   * @param is_logicool True if device firmware is Logicool.
+   * @return kLogiErrorNoError if checked ok, error code otherwise.
    */
-  virtual int performUpdate(std::vector<char> buffer, bool force) = 0;
+  virtual int IsLogicool(bool* is_logicool) = 0;
+
+  /**
+   * @brief Performs firmware update.
+   * @param buffer Firmware image buffer.
+   * @param secure_header Secure header buffer if secure_boot is enabled.
+   * @parma did_update True if update was performed successfully.
+   * @return kLogiErrorNoError if updated ok, error code otherwise.
+   */
+  virtual int PerformUpdate(std::vector<uint8_t> buffer,
+                            std::vector<uint8_t> secure_header,
+                            bool* did_update) = 0;
+
+  /**
+   * @brief Checks the device if it should perform the update. This compares
+   * the version of the binary image and device. If device version is lower than
+   * image version, should_update is true.
+   * @param buffer Image buffer to check for update.
+   * @param should_update True if device should perform update.
+   * @return kLogiErrorNoError if checked ok, error code otherwise
+   */
+  virtual int CheckForUpdate(std::vector<uint8_t> buffer, bool* should_update);
 
  protected:
   /**
-   * @brief Reads the device version. To be implemented by subclass.
-   * @param deviceVersion Output device version string.
-   * @return kLogiErrorNoError if gets ok, error code otherwise.
+   * @brief Reads the device version.
+   * @param device_version Output device version string.
+   * @return kLogiErrorNoError if read ok, error code otherwise
    */
-  virtual int readDeviceVersion(std::string* deviceVersion) = 0;
+  virtual int ReadDeviceVersion(std::string* device_version) = 0;
 };
 #endif /* SRC_USB_DEVICE_H_ */

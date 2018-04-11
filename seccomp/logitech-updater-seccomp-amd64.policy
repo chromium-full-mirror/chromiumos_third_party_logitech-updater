@@ -1,4 +1,4 @@
-# Copyright 2017 The Chromium OS Authors. All rights reserved.
+# Copyright 2018 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -9,14 +9,22 @@ close: 1
 connect: 1
 execve: 1
 exit_group: 1
+# fcntl: arg1 == F_SETLK
+fcntl: arg1 == 6
 fstat: 1
 futex: 1
 getdents: 1
 getdents64: 1
 getrlimit: 1
-# ioctl: arg1 == TCGETS || arg1 == UVCIOC_CTRL_QUERY
-#        arg1 == VIDIOC_QUERYCAP
-ioctl: arg1 == 0x5401 || arg1 == 0xC0107521 || arg1 == 0x80685600
+# ioctl: arg1 == TCGETS || arg1 == UVCIOC_CTRL_QUERY ||
+#        arg1 == VIDIOC_QUERYCAP || arg1 == HIDIOCSFEATURE(5) ||
+#        arg1 == HIDIOCGFEATURE(5) || arg1 == HIDIOCSFEATURE(6) ||
+#        arg1 == HIDIOCGFEATURE(6) || arg1 == HIDIOCSFEATURE(40 ||
+#        arg1 == HIDIOCGFEATURE(40) ||arg1 == HIDIOCSFEATURE(64) ||
+#        arg1 == HIDIOCGFEATURE(64) || arg1 == HIDIOCSFEATURE(66) ||
+#        arg1 == HIDIOCGFEATURE(66) || arg1 == HIDIOCSFEATURE(141) ||
+#        arg1 == HIDIOCGFEATURE(141) || arg1 == USBDEVFS_RESET
+ioctl: arg1 == 0x5401 || arg1 == 0xC0107521 || arg1 == 0x80685600 || arg1 == 0xC0054806 || arg1 == 0xC0054807 || arg1 == 0xC0064806 || arg1 == 0xC0064807 || arg1 == 0xC0284806 || arg1 == 0xC0284807 || arg1 == 0xC0404806 || arg1 == 0xC0404807 || arg1 == 0xC0424806 || arg1 == 0xC0424807 || arg1 == 0xC08D4806 || arg1 == 0xC08D4807 || arg1 == 0x5514
 lseek: 1
 mmap: 1
 mprotect: 1

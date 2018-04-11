@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium OS Authors. All rights reserved.
+// Copyright 2018 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,11 +8,11 @@
 #include <stdio.h>
 #include "video_device.h"
 
-// structure represents S19 binary format
+// Structure represents S19 binary format.
 struct S19Block {
-  // header block. Header block has address and data
+  // Header block. Header block has address and data.
   std::pair<uint16_t, std::vector<uint8_t>> Header;
-  // data blocks. Each data block has the address and data
+  // Data blocks. Each data block has an address and data.
   std::vector<std::pair<uint16_t, std::vector<uint8_t>>> Data;
 };
 
@@ -22,89 +22,95 @@ struct S19Block {
 class EepromDevice : public VideoDevice {
  public:
   /**
-   * @brief Constructor with product id
-   * @param pid Product id string
+   * @brief Constructor with product id.
+   * @param pid Product id string.
    */
   EepromDevice(std::string pid);
   virtual ~EepromDevice();
 
+  virtual int ReadDeviceVersion(std::string* device_version);
+  virtual int GetImageVersion(std::vector<uint8_t> buffer,
+                              std::string* image_version);
+  virtual int VerifyImage(std::vector<uint8_t> buffer);
+  virtual int PerformUpdate(std::vector<uint8_t> buffer,
+                            std::vector<uint8_t> secure_header,
+                            bool* did_update);
+
   /**
-   * @brief Reads the device version.
-   * @param deviceVersion Output device version string.
+   * @brief Writes Logicool brand info to eeprom. This is to save the brand info
+   * to faciliate the firmware process. Before firmware update process on audio
+   * device, brand info should be query from HID mode and store into the eeprom.
+   * When audio device is rebooted, query this brand info and continue the
+   * dfu update process
+   * @param logicool Input flag for brand info Logicool.
+   * @return kLogiErrorNoError if write info succeeded or error code otherwise
+   */
+  int WriteBrandInfo(bool logicool);
+
+  /**
+   * @brief Reads the brand info from eeprom address. The info can only be read
+   * if it was written to eeprom by WriteBrandInfo method.
+   * @param logicool Output brand info. True if brand is Logicool.
    * @return kLogiErrorNoError if read ok, error code otherwise.
    */
-  virtual int readDeviceVersion(std::string* deviceVersion);
-
-  /**
-   * @brief Gets the binary image version.
-   * @param buffer The image buffer to read from
-   * @param imageVersion Output device version string.
-   * @return kLogiErrorNoError if succeeded, error code otherwise.
-   */
-  virtual int getImageVersion(std::vector<char> buffer,
-                              std::string* imageVersion);
-
-  /**
-   * @brief Verifies the image to make sure it's secure.
-   * @param buffer The image buffer to verify.
-   * @return kLogiErrorNoError if verified ok, error code otherwise.
-   */
-  virtual int verifyImage(std::vector<char> buffer);
-
-  /**
-   * @brief Performs firmware update.
-   * @param buffer Firmware image buffer.
-   * @return kLogiErrorNoError if updated ok, error code otherwise.
-   */
-  virtual int performUpdate(std::vector<char> buffer, bool force);
+  int ReadBrandInfo(bool* logicool);
 
  private:
   /**
    * @brief Parses S19 binary file.
    * @param buffer The binary buffer.
-   * @param imageBlocks Parsed image block.
+   * @param image_blocks Parsed image blocks.
    * @return kLogiErrorNoError if parsed ok, error code otherwise.
    */
-  int parseS19(std::vector<char> buffer, std::vector<S19Block>* imageBlocks);
+  int ParseS19(std::vector<uint8_t> buffer,
+               std::vector<S19Block>* image_blocks);
 
   /**
    * @brief Sends image blocks to eeprom device.
-   * @param imageBlocks Parsed image block.
+   * @param image_blocks Image blocks to send to the device.
    * @return kLogiErrorNoError if sent ok, error code otherwise.
    */
-  int sendImage(std::vector<S19Block> imageBlocks);
+  int SendImage(std::vector<S19Block> image_blocks);
 
   /**
    * @brief Splits the S19 binary file into lines.
    * @param buffer The binary buffer.
    * @return vector containing one string for each line.
    */
-  std::vector<std::string> splitBinaryIntoLines(std::vector<char> buffer);
+  std::vector<std::string> SplitBinaryIntoLines(std::vector<uint8_t> buffer);
 
   /**
    * @brief Reads the image byte at address.
-   * @param imageBlocks The parsed S19 image blocks.
+   * @param image_blocks The S19 image block to read byte from.
    * @param address Address to read from.
-   * @param value Output value.
+   * @param value Output read byte value.
    * @return kLogiErrorNoError if read ok, error code otherwise.
    */
-  int readImageByte(std::vector<S19Block> imageBlocks,
+  int ReadImageByte(std::vector<S19Block> image_blocks,
                     uint16_t address,
                     uint8_t* value);
 
   /**
-   * @brief Counts the image bytes.
-   * @param imageBlocks The parsed S19 image blocks.
+   * @brief Counts the image bytes from S19 image blocks.
+   * @param image_blocks The image blocks to count number of bytes.
    * @return image blocks size or 0 if error.
    */
-  int countImageBytes(std::vector<S19Block> imageBlocks);
+  int CountImageBytes(std::vector<S19Block> image_blocks);
 
   /**
    * @brief Writes eeprom byte to the device.
    * @param address Address to write to.
-   * @param byte Byte to write.
+   * @param byte Data byte to write.
    * @return kLogiErrorNoError if succeeded, error code otherwise.
    */
-  int writeEepromByte(uint16_t address, uint8_t byte);
+  int WriteEepromByte(uint16_t address, uint8_t byte);
+
+  /**
+   * @brief Reads eeprom byte from the device.
+   * @param address Address to read the byte data from.
+   * @param bytes Output data byte vector.
+   * @return kLogiErrorNoError if succeeded, error code otherwise.
+   */
+  int ReadEepromBytes(uint16_t address, std::vector<unsigned char>* bytes);
 };
 #endif /* SRC_EEPROM_DEVICE_H_ */

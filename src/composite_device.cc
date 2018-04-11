@@ -1,148 +1,174 @@
-// Copyright 2017 The Chromium OS Authors. All rights reserved.
+// Copyright 2018 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "composite_device.h"
+#include <linux/usbdevice_fs.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
+#include <base/logging.h>
+#include <brillo/syslog_logging.h>
 #include <unistd.h>
 #include "eeprom_device.h"
 #include "mcu2_device.h"
 #include "utilities.h"
 #include "video_device.h"
 
-constexpr unsigned int kLogiRebootingWaitTime = 10;
+CompositeDevice::CompositeDevice() {}
 
-CompositeDevice::CompositeDevice(std::string videoPid,
-                                 std::string eepromPid,
-                                 std::string mcu2Pid) {
-  devices.push_back(std::make_shared<VideoDevice>(videoPid));
-  devices.push_back(std::make_shared<EepromDevice>(eepromPid));
-  devices.push_back(std::make_shared<Mcu2Device>(mcu2Pid));
-  openDevices();
+CompositeDevice::CompositeDevice(std::string video_pid,
+                                 std::string eeprom_pid,
+                                 std::string mcu2_pid) {
+  devices_.push_back(std::make_shared<VideoDevice>(video_pid));
+  devices_.push_back(std::make_shared<EepromDevice>(eeprom_pid));
+  devices_.push_back(std::make_shared<Mcu2Device>(mcu2_pid));
 }
 
 CompositeDevice::~CompositeDevice() {
-  closeDevices();
+  CloseDevices();
 }
 
-int CompositeDevice::openDevices() {
+int CompositeDevice::OpenDevices() {
   int error = kLogiErrorUnknown;
-  for (auto device : devices) {
-    // open each device
-    error = device->openDevice();
+  for (auto device : devices_) {
+    error = device->OpenDevice();
     if (error)
-      break;
+      return error;
   }
   return error;
 }
 
-void CompositeDevice::closeDevices() {
-  for (auto device : devices)
-    device->closeDevice();
+void CompositeDevice::CloseDevices() {
+  for (auto device : devices_)
+    device->CloseDevice();
 }
 
-int CompositeDevice::getDevicesVersion(std::map<int, std::string>* versionMap) {
+int CompositeDevice::GetDevicesVersion(
+    std::map<int, std::string>* version_map) {
   std::map<int, std::string> output;
-  int error = kLogiErrorUnknown;
-  for (auto device : devices) {
+  int error = kLogiErrorNoError;
+  for (auto device : devices_) {
     std::string version;
-    if ((error = device->getDeviceVersion(&version)))
-      break;  // error getting version, break out and return
-    (*versionMap)[device->deviceType] = version;
+    device->OpenDevice();
+    error = device->GetDeviceVersion(&version);
+    device->CloseDevice();
+    if (error)
+      return error;
+    (*version_map)[device->device_type_] = version;
   }
   return error;
 }
 
-int CompositeDevice::getDevicesName(std::map<int, std::string>* nameMap) {
-  int error = kLogiErrorUnknown;
-  for (auto device : devices) {
-    std::string name;
-    if ((error = device->getDeviceName(&name)))
-      break;  // error getting name, break out and return
-    (*nameMap)[device->deviceType] = name;
-  }
+int CompositeDevice::GetDeviceName(std::string* name) {
+  // Device name is stored on video device.
+  std::shared_ptr<USBDevice> device = GetDeviceFromType(kLogiDeviceVideo);
+  if (device == nullptr)
+    return kLogiErrorDeviceNotPresent;
+  device->OpenDevice();
+  int error = device->GetDeviceName(name);
+  device->CloseDevice();
   return error;
 }
 
-int CompositeDevice::getImagesVersion(std::map<int, std::string>* versionMap) {
-  int error = kLogiErrorUnknown;
+int CompositeDevice::GetImagesVersion(std::map<int, std::string>* version_map) {
+  int error = kLogiErrorNoError;
   std::string version;
 
-  for (auto device : devices) {
+  for (auto device : devices_) {
     std::string version;
-    std::vector<char> buffer = getImageBuffer(device->deviceType);
-
-    error = device->verifyImage(buffer);
+    std::vector<uint8_t> buffer = image_buffers_[device->device_type_];
+    error = device->VerifyImage(buffer);
     if (error)
-      return error;  // failed to verify image
-    if ((error = device->getImageVersion(buffer, &version)))
-      return error;  // failed to get image version
-    (*versionMap)[device->deviceType] = version;
+      return error;
+    if ((error = device->GetImageVersion(buffer, &version)))
+      return error;
+    (*version_map)[device->device_type_] = version;
   }
   return error;
 }
 
-bool CompositeDevice::isDeviceUpToDate() {
-  for (auto device : devices) {
-    std::vector<char> buffer = getImageBuffer(device->deviceType);
-    std::string imageVersion;
-    std::string deviceVersion;
-    device->getDeviceVersion(&deviceVersion);
-    device->getImageVersion(buffer, &imageVersion);
-    if (CompareVersions(deviceVersion, imageVersion) < 0)
+void CompositeDevice::SetImageBuffer(int device_type,
+                                     std::vector<uint8_t> buffer) {
+  image_buffers_[device_type] = buffer;
+}
+
+void CompositeDevice::SetForceUpdate(bool force) {
+  for (auto device : devices_)
+    device->force_update_ = force;
+}
+
+bool CompositeDevice::IsDeviceUpToDate() {
+  for (auto device : devices_) {
+    std::vector<uint8_t> buffer = image_buffers_[device->device_type_];
+    std::string image_version;
+    std::string device_version;
+    device->OpenDevice();
+    device->GetDeviceVersion(&device_version);
+    device->GetImageVersion(buffer, &image_version);
+    device->CloseDevice();
+    if (CompareVersions(device_version, image_version) < 0)
       return false;
   }
   return true;
 }
 
-bool CompositeDevice::isDevicePresent() {
-  for (auto device : devices) {
-    std::vector<std::string> devicepath = device->findDevices();
-    if (devicepath.size() > 0)
+bool CompositeDevice::IsDevicePresent() {
+  return IsDevicePresent(kLogiDeviceVideo);
+}
+
+bool CompositeDevice::IsDevicePresent(int device_type) {
+  for (auto device : devices_) {
+    if (device->device_type_ == device_type && device->IsPresent())
       return true;
   }
   return false;
 }
 
-int CompositeDevice::performUpdate(bool force) {
-  int error = kLogiErrorUnknown;
-  std::shared_ptr<USBDevice> videoDevice;
-  for (auto device : devices) {
-    std::vector<char> buffer = getImageBuffer(device->deviceType);
-    error = device->performUpdate(buffer, force);
-    if (error)
-      return error;  // failed to update
-    if (device->deviceType == kLogiDeviceVideo)
-      videoDevice = device;  // get a hold of video device to do reboot later
+bool CompositeDevice::AreImagesPresent() {
+  if (image_buffers_.empty())
+    return false;
+  for (const auto& image_buffer : image_buffers_) {
+    const std::vector<uint8_t>& buffer = image_buffer.second;
+    if (buffer.empty())
+      return false;
   }
-
-  // updated ok, reboot devices
-  for (auto device : devices) {
-    if (device->deviceType != kLogiDeviceVideo)
-      device->closeDevice();  // close all other device before rebooting
-  }
-  videoDevice->rebootDevice();
-  sleep(kLogiRebootingWaitTime);  // wait for device to reboot
-  openDevices();                  // make sure to reopen devices
-  return kLogiErrorNoError;
+  return true;
 }
 
-std::vector<char> CompositeDevice::getImageBuffer(int deviceType) {
-  std::vector<char> buffer;
-  switch (deviceType) {
-    case kLogiDeviceVideo:
-      buffer = videoImageBuffer;
-      break;
-
-    case kLogiDeviceEeprom:
-      buffer = eepromImageBuffer;
-      break;
-
-    case kLogiDeviceMcu2:
-      buffer = mcu2ImageBuffer;
-      break;
-
-    default:
-      break;
+std::shared_ptr<USBDevice> CompositeDevice::GetDeviceFromType(int device_type) {
+  for (auto dev : devices_) {
+    if (dev->device_type_ == device_type)
+      return dev;
   }
-  return buffer;
+  return nullptr;
+}
+
+int CompositeDevice::PerformComponentUpdate() {
+  std::vector<int> video_types = {kLogiDeviceEeprom, kLogiDeviceMcu2,
+                                  kLogiDeviceVideo};
+  std::string name;
+  GetDeviceName(&name);
+  LOG(INFO) << "Checking " << name << " firmwares...";
+  int error = kLogiErrorNoError;
+  bool did_update_video = false;
+  for (auto const& type : video_types) {
+    std::shared_ptr<USBDevice> device = GetDeviceFromType(type);
+    std::vector<uint8_t> buffer = image_buffers_[type];
+    std::vector<uint8_t> header;
+    if (device != nullptr) {
+      error = device->OpenDevice();
+      bool did_update;
+      error = device->PerformUpdate(buffer, header, &did_update);
+      if (error) {
+        device->CloseDevice();
+        return error;
+      }
+      if (did_update && did_update_video == false)
+        did_update_video = true;
+      if (did_update_video && type == kLogiDeviceVideo)
+        device->RebootDevice();
+      device->CloseDevice();
+    }
+  }
+  return error;
 }

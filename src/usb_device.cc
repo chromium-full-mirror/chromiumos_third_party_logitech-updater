@@ -1,26 +1,34 @@
-// Copyright 2017 The Chromium OS Authors. All rights reserved.
+// Copyright 2018 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "usb_device.h"
+#include <base/logging.h>
+#include <unistd.h>
 #include <thread>
 #include "utilities.h"
 
-// 500ms to retry reading device version
+// 500ms to retry reading device version.
 constexpr unsigned int kLogiReadDeviceVersionRetryIntervalMs = 500;
-// max retry to read device version
+// Max retry to read device version.
 constexpr unsigned int kLogiReadDeviceVersionMaxRetry = 3;
 
 USBDevice::USBDevice(std::string pid, int type)
-    : usbPid(pid), deviceType(type), fileDescriptor(-1), isOpen(false) {}
+    : usb_pid_(pid),
+      device_type_(type),
+      force_update_(false),
+      file_descriptor_(-1),
+      is_open_(false) {}
 
-USBDevice::~USBDevice() {}
+USBDevice::~USBDevice() {
+  CloseDevice();
+}
 
-int USBDevice::getDeviceVersion(std::string* deviceVersion) {
+int USBDevice::GetDeviceVersion(std::string* device_version) {
   int error = kLogiErrorUnknown;
   std::string version;
   for (int i = 0; i < kLogiReadDeviceVersionMaxRetry; i++) {
-    error = readDeviceVersion(&version);
+    error = ReadDeviceVersion(&version);
     if (!error && CompareVersions(version, "0.0.0") != 0)
       break;
 
@@ -34,6 +42,52 @@ int USBDevice::getDeviceVersion(std::string* deviceVersion) {
   if (error)
     return error;
 
-  *deviceVersion = version;
+  *device_version = version;
+  return kLogiErrorNoError;
+}
+
+void USBDevice::CloseDevice() {
+  if (file_descriptor_ >= 0)
+    close(file_descriptor_);
+
+  file_descriptor_ = -1;
+  is_open_ = false;
+}
+
+int USBDevice::CheckForUpdate(std::vector<uint8_t> buffer,
+                              bool* should_update) {
+  std::string device_version;
+  std::string image_version;
+  int error = GetDeviceVersion(&device_version);
+  if (error) {
+    LOG(ERROR) << "Failed to read device version. Error: " << error;
+    return error;
+  }
+
+  error = VerifyImage(buffer);
+  if (error) {
+    LOG(ERROR) << "Failed to verify binary image. Error: " << error;
+    return error;
+  }
+
+  error = GetImageVersion(buffer, &image_version);
+  if (error) {
+    LOG(ERROR) << "Failed to read binary image version. Error: " << error;
+    return error;
+  }
+
+  if (force_update_) {
+    LOG(INFO) << "Force update enabled. Will not check firmware version.";
+    *should_update = true;
+    return kLogiErrorNoError;
+  }
+
+  int compare_version = CompareVersions(device_version, image_version);
+  if (compare_version >= 0) {
+    LOG(INFO) << "Firmware is up to date.";
+    *should_update = false;
+  } else {
+    *should_update = true;
+  }
   return kLogiErrorNoError;
 }

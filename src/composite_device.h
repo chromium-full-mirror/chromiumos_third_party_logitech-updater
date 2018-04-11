@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium OS Authors. All rights reserved.
+// Copyright 2018 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,106 +18,130 @@
  * audio/codec/bluetooth ble components.
  */
 class CompositeDevice {
- public:
-  std::vector<char> videoImageBuffer;
-  std::vector<char> eepromImageBuffer;
-  std::vector<char> mcu2ImageBuffer;
-
  private:
-  std::vector<std::shared_ptr<USBDevice>> devices;  // component devices
+  std::vector<std::shared_ptr<USBDevice>> devices_;
+
+  // Store the image buffers in this map as follow:
+  // {
+  //   kLogiDeviceVideo   : video-image-buffer,
+  //   kLogiDeviceEeprom  : eeprom-image-buffer,
+  //   kLogiDeviceMcu2    : mcu2-image-buffer,
+  // }
+  std::map<int, std::vector<uint8_t>> image_buffers_;
+
  public:
+  CompositeDevice();
+
   /**
    * @brief Constructor with video pid, eeprom pid and mcu2 pid.
-   * @param videoPid Video product id.
-   * @param eepromPid Eeprom product id.
-   * @param mcu2Pid Motor control unit product id.
+   * @param video_pid Video product id.
+   * @param eeprom_pid Eeprom product id.
+   * @param mcu2_pid Motor control unit product id.
    */
-  CompositeDevice(std::string videoPid,
-                  std::string eepromPid,
-                  std::string mcu2Pid);
+  CompositeDevice(std::string video_pid,
+                  std::string eeprom_pid,
+                  std::string mcu2_pid);
 
   virtual ~CompositeDevice();
 
   /**
-   * @brief Opens all component devices.
+   * @brief Open all component devices.
    * @return kLogiErrorNoError if successfully opened or error code if one of
    * the components fails to open.
    */
-  int openDevices();
+  int OpenDevices();
 
   /**
-   * @brief Closes all component devices.
+   * @brief Close all component devices.
    */
-  void closeDevices();
+  void CloseDevices();
 
   /**
-   * @brief Gets version number of each component in the composite device.
-   * @param versionMap Output version map containing all component versions of
-   * the composite device. Version map is formatted as follow
+   * @brief Get version number of each component in the composite device.
+   * @param version_map Output version map containing all component versions of
+   * the composite device. Version map is formatted as follow:
    * {
-   *  kLogiDeviceVideo  : "video-version",
-   *  kLogiDeviceEeprom : "eeprom-version",
-   *  kLogiDeviceMcu2   : "mcu2-version",
+   *    kLogiDeviceVideo  : "video-version",
+   *    kLogiDeviceEeprom : "eeprom-version",
+   *    kLogiDeviceMcu2   : "mcu2-version",
    * }
+   * @return kLogiErrorNoError if succeeded or error code if fails to get
+   * one of the component versions.
+   */
+  int GetDevicesVersion(std::map<int, std::string>* version_map);
+
+  /**
+   * @brief Get name of each component in the composite device.
+   * @param name Output device name.
    * @return kLogiErrorNoError if succeeded or error code if failed to get one
    * of the component versions.
    */
-  int getDevicesVersion(std::map<int, std::string>* versionMap);
+  int GetDeviceName(std::string* name);
 
   /**
-   * @brief Gets name of each component in the composite device.
-   * @param nameMap Output name map containing all component names of the
-   * composite device. name map is formatted as follow
+   * @brief Verify and get version number of each image buffers.
+   * @param version_map Output version map containing all images' version
+   * Version map is formatted as follow:
    * {
-   *  kLogiDeviceVideo  : "video-device-name",
-   *  kLogiDeviceEeprom  : "eeprom-device-name",
-   *  kLogiDeviceMcu2   : "mcu2-device-name",
+   *    kLogiDeviceVideo  : "video-image-version",
+   *    kLogiDeviceEeprom : "eeprom-image-version",
+   *    kLogiDeviceMcu2   : "mcu2-image-version",
    * }
-   * @return kLogiErrorNoError if succeeded or error code if failed to get one
-   * of the component version.
-   */
-  int getDevicesName(std::map<int, std::string>* nameMap);
-
-  /**
-   * @brief Verifies and gets version number of each image buffers assuming
-   * they've been set.
-   * @param versionMap Output version map containing all images' version
-   * Version map is formatted as follow
-   * {
-   *  kLogiDeviceVideo  : "video-image-version",
-   *  kLogiDeviceEeprom : "eeprom-image-version",
-   *  kLogiDeviceMcu2   : "mcu2-image-version",
-   * }
-   * @return kLogiErrorNoError if succeeded or error code if failed to verify or
+   * @return kLogiErrorNoError if succeeded or error code if fails to verify or
    * get version.
    */
-  int getImagesVersion(std::map<int, std::string>* versionMap);
+  int GetImagesVersion(std::map<int, std::string>* version_map);
 
   /**
-   * @brief Checks if device firmware is up to date.
+   * @brief Set image buffer. It does not retain or copy the buffer. It
+   * replaces the old buffer if it's already existed in the map.
+   * @param device_type The device type of the image. Use kLogiDeviceVideo,
+   * kLogiDeviceEeprom... for this type.
+   * @param buffer The image buffer to be set.
    */
-  bool isDeviceUpToDate();
+  void SetImageBuffer(int device_type, std::vector<uint8_t> buffer);
 
   /**
-   * @brief Checks if device is present.
+   * @brief Set force update to ignore firmware version checking.
+   * @param force If true, ignore version checking and perform update.
    */
-  bool isDevicePresent();
+  void SetForceUpdate(bool force);
 
   /**
-   * @brief Performs the firmware update on all component devices.
-   * @return kLogiErrorNoError if successfully updated all components, error
-   * code otherwise.
+   * @brief Check if device firmware is up to date.
+   * @return true if device is up to date, false otherwise.
    */
-  int performUpdate(bool force);
+  bool IsDeviceUpToDate();
 
- private:
   /**
-   * @brief Gets image buffer from type.
-   * @param deviceType The device type: kLogiDeviceVideo, kLogiDeviceEeprom, or
-   * kLogiDeviceMcu2 ...
-   * @return image buffer based on device type or empty buffer if device type is
-   * unknown.
+   * @brief Check if device is present.
+   * @return true if one of the device components is present, false otherwise.
    */
-  std::vector<char> getImageBuffer(int deviceType);
+  bool IsDevicePresent();
+
+  /**
+   * @brief Check if the device is present based on device type.
+   * @param device_type The device to check.
+   * @return true if the device is present, false otherwise.
+   */
+  bool IsDevicePresent(int device_type);
+
+  /**
+   * @brief Check if images are present. This will return false if one of the
+   * images is not present.
+   */
+  bool AreImagesPresent();
+
+  /**
+   * @brief Get device from device type.
+   * @param device_type Type of the device to get.
+   */
+  std::shared_ptr<USBDevice> GetDeviceFromType(int device_type);
+
+  /**
+   * @brief Perform composite device components one at a time.
+   * @return kLogiErrorNoError if updated ok, error code otherwise.
+   */
+  int PerformComponentUpdate();
 };
 #endif /* SRC_COMPOSITE_DEVICE_H_ */

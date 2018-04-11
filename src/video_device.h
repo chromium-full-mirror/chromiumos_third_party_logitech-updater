@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium OS Authors. All rights reserved.
+// Copyright 2018 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -31,93 +31,45 @@ class VideoDevice : public USBDevice {
 
   virtual ~VideoDevice();
 
-  /**
-   * @brief Finds the device with usbPid & usbVid.
-   * @return list of device paths. If list count > 0, there are multiple
-   * devices.
-   */
-  virtual std::vector<std::string> findDevices();
-
-  /**
-   * @brief Opens the device.
-   * @return kLogiErrorNoError if opened ok, error code otherwise.
-   */
-  virtual int openDevice();
-
-  /**
-   * @brief Closes the device.
-   */
-  virtual void closeDevice();
-
-  /**
-   * @brief Gets the device name.
-   * @param deviceName Output device name.
-   * @return kLogiErrorNoError if succeeded, error code otherwise.
-   */
-  virtual int getDeviceName(std::string* deviceName);
-
-  /**
-   * @brief Gets the binary image version.
-   * @param buffer The image buffer to read from.
-   * @param imageVersion Output device version string.
-   * @return kLogiErrorNoError if succeeded, error code otherwise.
-   */
-  virtual int getImageVersion(std::vector<char> buffer,
-                              std::string* imageVersion);
-
-  /**
-   * @brief Verifies the image to make sure it has the secure signature.
-   * @param buffer The image buffer to verify.
-   * @return kLogiErrorNoError if verified ok, error code otherwise.
-   */
-  virtual int verifyImage(std::vector<char> buffer);
-
-  /**
-   * @brief Reads the device version.
-   * @param deviceVersion Output device version string.
-   * @return kLogiErrorNoError if read ok, error code otherwise.
-   */
-  virtual int readDeviceVersion(std::string* deviceVersion);
-
-  /**
-   * @brief Performs firmware update.
-   * @param buffer Firmware image buffer.
-   * @return kLogiErrorNoError if updated ok, error code otherwise.
-   */
-  virtual int performUpdate(std::vector<char> buffer, bool force);
-
-  /**
-   * @brief Reboots the device.
-   * @return kLogiErrorNoError if rebooted ok, error code otherwise.
-   */
-  virtual int rebootDevice();
+  virtual bool IsPresent();
+  virtual int OpenDevice();
+  virtual int GetDeviceName(std::string* device_name);
+  virtual int IsLogicool(bool* is_logicool);
+  virtual int GetImageVersion(std::vector<uint8_t> buffer,
+                              std::string* image_version);
+  virtual int VerifyImage(std::vector<uint8_t> buffer);
+  virtual int PerformUpdate(std::vector<uint8_t> buffer,
+                            std::vector<uint8_t> secure_header,
+                            bool* did_update);
+  virtual int RebootDevice();
+  virtual int ReadDeviceVersion(std::string* device_version);
 
  protected:
   /**
    * @brief Initiates the update process for the AIT chip (video device chip).
    * @return kLogiErrorNoError if initiated ok, error code otherwise.
    */
-  virtual int aitInitiateUpdate();
+  virtual int AitInitiateUpdate();
 
   /**
    * @brief Sends image buffer to the AIT chip (video device chip).
-   * @param buffer The image buffer
+   * @param buffer The image buffer.
    * @return kLogiErrorNoError if sent ok, error code otherwise.
    */
-  virtual int aitSendImage(std::vector<char> buffer);
+  virtual int AitSendImage(std::vector<uint8_t> buffer);
 
   /**
    * @brief Finalizes the update process for the AIT chip (video device chip).
    * @return kLogiErrorNoError if finalized ok, error code otherwise.
    */
-  virtual int aitFinalizeUpdate();
+  virtual int AitFinalizeUpdate();
 
   /**
    * @brief Initiates the update process for the AIT chip (video device chip).
-   * @param mmpData The data for setting initiation.
+   * @param mmp_data The data for setting initiation.
    * @return kLogiErrorNoError if initiated ok, error code otherwise.
    */
-  int aitInitiateUpdateWithData(std::vector<unsigned char> mmpData);
+  int AitInitiateUpdateWithData(std::vector<unsigned char> mmp_data);
 
   /**
    * @brief Sends image buffer to the AIT chip (video device chip).
@@ -125,52 +77,52 @@ class VideoDevice : public USBDevice {
    * @param offset The initial offset when send image.
    * @return kLogiErrorNoError if sent ok, error code otherwise.
    */
-  int aitSendImageWithOffset(std::vector<char> buffer, unsigned int offset);
+  int AitSendImageWithOffset(std::vector<uint8_t> buffer, unsigned int offset);
 
   /**
    * @brief Finalizes the update process for the AIT chip (video device chip).
-   * @param mmpData The data for setting finalization.
+   * @param mmp_data The data for setting finalization.
    * @return kLogiErrorNoError if finalized ok, error code otherwise.
    */
-  int aitFinalizeUpdateWithData(std::vector<unsigned char> mmpData);
+  int AitFinalizeUpdateWithData(std::vector<unsigned char> mmp_data);
 
  public:
   /**
-   * @brief Sets data to the extension control unit (XU).
-   * @param unitId XU unit id.
-   * @param controlSelector XU control selector.
+   * @brief Sets data to the extension control unit (xu).
+   * @param unit_id XU unit id.
+   * @param control_selector XU control selector.
    * @param data XU data to be set.
-   * @return kLogiErrorNoError if succeeded, error otherwise.
+   * @return kLogiErrorNoError if set ok, error otherwise.
    */
-  int setXuControl(unsigned char unitId,
-                   unsigned char controlSelector,
+  int SetXuControl(unsigned char unit_id,
+                   unsigned char control_selector,
                    std::vector<unsigned char> data);
 
   /**
-   * @brief Gets data from the extension control unit (XU).
-   * @param unitId XU unit id.
-   * @param controlSelector XU control selector.
+   * @brief Gets data from the extension control unit (xu).
+   * @param unit_id XU unit id.
+   * @param control_selector XU control selector.
    * @param data XU data output.
    * @return kLogiErrorNoError if succeeded, error otherwise.
    */
-  int getXuControl(unsigned char unitId,
-                   unsigned char controlSelector,
+  int GetXuControl(unsigned char unit_id,
+                   unsigned char control_selector,
                    std::vector<unsigned char>* data);
 
  private:
   /**
-   * @brief Control query data size needs to be known before querying.
-   * Therefore, UVC_GET_LEN needs to be queried for the size first.
-   * UVC_GET_LEN query returns 2 bytes of data in little endian. Refers to
+   * @brief  Controls query data size needs to be known before sending queries
+   * to the device by sending UVC_GET_LEN query first. UVC_GET_LEN query
+   * returns 2 bytes of data in little endian. Refers to
    * https://linuxtv.org/downloads/v4l-dvb-api/v4l-drviers/uvcvideo.html for
    * more info.
-   * @param unitID XU unit id.
-   * @param controlSelector XU control selector.
-   * @param dataSize Data size output.
-   * @return kLogiErrorNoError if succeeded, error code otherwise.
+   * @param unit_id XU unit id.
+   * @param control_selector XU control selector.
+   * @param data_size Data size output.
+   * @return kLogiErrorNoError if succeeded, error otherwise
    */
-  int queryDataSize(unsigned char unitId,
-                    unsigned char controlSelector,
-                    int* dataSize);
+  int QueryDataSize(unsigned char unit_id,
+                    unsigned char control_selector,
+                    int* data_size);
 };
 #endif /* SRC_VIDEO_DEVICE_H_ */
