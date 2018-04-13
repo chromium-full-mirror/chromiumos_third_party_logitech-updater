@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string>
 #include <vector>
+#include <openssl/rsa.h>
 
 const char kLogiGuidDeviceInfo[] = "69678ee4-410f-40db-a850-7420d7d8240e";
 const char kLogiGuidAITCustom[] = "23e49ed0-1178-4f31-ae52-d2fb8a8d3b48";
@@ -161,4 +162,50 @@ bool ContainString(std::string str, std::string substring, bool case_sensitive);
  */
 bool LockUpdater();
 
+/**
+ * @brief Generates RSA crypto.
+ * @param test_mode If true, use test_mode key data, live key data otherwise.
+ * @param out_rsa Output RSA crypto.
+ * @return true if generated rsa ok, false otherwise.
+ */
+bool GenerateRSA(bool test_mode, RSA** out_rsa);
+
+/**
+ * @brief Converts hex string to uint8_t data.
+ * @param hex_string Hex string to convert.
+ * @param data Converted data output.
+ * @return true if converted ok, false otherwise.
+ */
+bool ConvertHexStringToData(std::string hex_string, std::vector<uint8_t>* data);
+
+/**
+ * @brief Validates signature with RSA crypto.
+ * @param test_mode If true, use test_mode key data.
+ * @param payload Payload bytes to validate.
+ * @param sig Signature bytes to validate the payload.
+ * @return true if validated ok, false otherwise.
+ */
+bool ValidateSignature(bool test_mode,
+                       std::vector<uint8_t> payload,
+                       std::vector<uint8_t> sig);
+
+/**
+ * @brief Validates signature with RSA crypto. Reverse the sig if fail and
+ * re-validate it.
+ * @param test_mode If true, use test_mode key data.
+ * @param payload Payload file path.
+ * @param sig Signature file path.
+ * @return true if validated ok, false otherwise.
+ */
+bool ValidateSignature(bool test_mode, std::string payload, std::string sig);
+
+/**
+ * @brief Validates signature with RSA crypto. Add ".sig" to payload and call
+ * ValidateSignature(bool test_mode, std::string payload, std::string sig) to
+ * perform validation.
+ * @param test_mode If true, use test_mode key data.
+ * @param payload Payload file path.
+ * @return true if validated ok, false otherwise.
+ */
+bool ValidateSignature(bool test_mode, std::string payload);
 #endif /* SRC_UTILITIES_H_ */

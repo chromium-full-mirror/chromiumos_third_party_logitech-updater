@@ -15,6 +15,8 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
+#include <openssl/md5.h>
+#include <openssl/evp.h>
 
 constexpr unsigned int kLogiVendorID = 0x046D;
 // major, minor, build.
@@ -313,4 +315,149 @@ bool LockUpdater() {
   if (fcntl(lockfile, F_SETLK, &fl) < 0)
     return false;
   return true;
+}
+
+bool GenerateRSA(bool test_mode, RSA** out_rsa) {
+  const uint8_t test_modulus[] = {
+      0xbe, 0x8d, 0x09, 0x90, 0x5d, 0x44, 0x8b, 0x7d, 0x4c, 0x4b, 0x60,
+      0x68, 0xca, 0xb7, 0x1e, 0x0b, 0x6c, 0xab, 0x05, 0x16, 0x9f, 0xac,
+      0x5a, 0x1e, 0x5a, 0x32, 0x9e, 0x85, 0x9a, 0xb8, 0x11, 0x52, 0x2b,
+      0x92, 0x3f, 0x58, 0xa4, 0x89, 0xb7, 0x8c, 0xf7, 0x75, 0x9e, 0xb7,
+      0x02, 0x95, 0xee, 0x3c, 0x7b, 0x88, 0x26, 0x49, 0x83, 0x3a, 0xb0,
+      0xbf, 0xe6, 0xfd, 0x9b, 0x14, 0xd6, 0x9e, 0x7e, 0xe9};
+
+  const uint8_t modulus[] = {
+      0xd5, 0x4b, 0x8a, 0xff, 0xb1, 0xaf, 0x5d, 0x83, 0xc6, 0x74, 0xde,
+      0x6f, 0xd2, 0x93, 0x60, 0x1b, 0xb8, 0xdf, 0xc2, 0x0b, 0x20, 0xd5,
+      0x35, 0x87, 0x04, 0x2e, 0xaa, 0x92, 0x58, 0x62, 0xcb, 0x83, 0x68,
+      0xfd, 0xf4, 0x59, 0x81, 0x1f, 0xb9, 0x89, 0x45, 0x69, 0x60, 0xd3,
+      0x36, 0xd4, 0x52, 0x02, 0xfd, 0x6c, 0xf4, 0x4f, 0x3c, 0xaa, 0x98,
+      0xc8, 0xd9, 0x4c, 0x30, 0xb0, 0xba, 0x1d, 0x7e, 0x9d};
+
+  const uint8_t exponent_key[] = {1, 0, 1};
+  BIGNUM* mod = NULL;
+  BIGNUM* exponent = NULL;
+  if (test_mode) {
+    mod = BN_bin2bn(test_modulus, sizeof(test_modulus), NULL);
+  } else {
+    mod = BN_bin2bn(modulus, sizeof(modulus), NULL);
+  }
+  if (!mod)
+    return false;
+  exponent = BN_bin2bn(exponent_key, sizeof(exponent_key), NULL);
+  if (!exponent)
+    return false;
+
+  (*out_rsa)->n = mod;
+  (*out_rsa)->e = exponent;
+  return true;
+}
+
+bool ConvertHexStringToData(std::string hex_string,
+                            std::vector<uint8_t>* data) {
+  std::string hex = hex_string;
+  if (hex_string.length() % 2 != 0)
+    hex = "0" + hex_string;
+  for (int i = 0; i < hex.size(); i = i + 2) {
+    std::string substring = hex.substr(i, 2);
+    int value;
+    bool result = ConvertHexStringToInt(substring, &value);
+    if (result == false)
+      return false;
+    (*data).push_back(static_cast<uint8_t>(value));
+  }
+  return true;
+}
+
+bool ValidateSignature(bool test_mode,
+                       std::vector<uint8_t> payload,
+                       std::vector<uint8_t> sig) {
+  if (payload.empty() || sig.empty())
+    return false;
+  RSA* rsa = RSA_new();
+
+  if (!GenerateRSA(test_mode, &rsa)) {
+    if (rsa)
+      RSA_free(rsa);
+    return false;
+  }
+
+  // Decrypt sig to MD5 sum.
+  std::vector<uint8_t> decrypted_sig(RSA_size(rsa));
+  int decrypted_sig_len = RSA_public_decrypt(
+      sig.size(), sig.data(), decrypted_sig.data(), rsa, RSA_PKCS1_PADDING);
+
+  // MD5 payload.
+  std::vector<uint8_t> digest_message(MD5_DIGEST_LENGTH);
+  MD5(payload.data(), payload.size(), digest_message.data());
+
+  if (decrypted_sig_len <= 0) {
+    if (rsa)
+      RSA_free(rsa);
+    return false;
+  }
+
+  if (decrypted_sig_len < MD5_DIGEST_LENGTH) {
+    if (rsa)
+      RSA_free(rsa);
+    return false;
+  }
+
+  if (decrypted_sig_len == MD5_DIGEST_LENGTH) {
+    if (rsa)
+      RSA_free(rsa);
+    return (std::equal(decrypted_sig.begin(),
+                       decrypted_sig.begin() + MD5_DIGEST_LENGTH - 1,
+                       digest_message.begin()));
+  }
+
+  // Decrypted sig is possibly ANS1 header encoded.
+  // ANS1 header is 3020300c06082a864886f70d020505000410.
+  const std::vector<uint8_t> ans1_header = {0x30, 0x20, 0x30, 0x0C, 0x06, 0x08,
+                                            0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D,
+                                            0x02, 0x05, 0x05, 0x00, 0x04, 0x10};
+  if (decrypted_sig_len < ans1_header.size()) {
+    if (rsa)
+      RSA_free(rsa);
+    return false;
+  }
+  if (!std::equal(decrypted_sig.begin(),
+                  decrypted_sig.begin() + ans1_header.size() - 1,
+                  ans1_header.begin())) {
+    if (rsa)
+      RSA_free(rsa);
+    return false;
+  }
+  int result = RSA_verify(NID_md5, digest_message.data(), MD5_DIGEST_LENGTH,
+                          sig.data(), sig.size(), rsa);
+  if (rsa)
+    RSA_free(rsa);
+  return (result == 1) ? true : false;
+}
+
+bool ValidateSignature(bool test_mode, std::string payload, std::string sig) {
+  std::vector<uint8_t> payload_data = ReadBinaryFileContent(payload);
+  if (payload_data.empty())
+    return false;
+
+  std::string sig_string;
+  base::FilePath sig_path(sig.c_str());
+  if (!ReadFileToString(sig_path, &sig_string))
+    return false;
+
+  std::vector<uint8_t> sig_data;
+  if (!ConvertHexStringToData(sig_string, &sig_data))
+    return false;
+  bool validated = ValidateSignature(test_mode, payload_data, sig_data);
+  if (!validated) {
+    // Sig signed by live server needs to be reverted.
+    std::reverse(std::begin(sig_data), std::end(sig_data));
+    validated = ValidateSignature(test_mode, payload_data, sig_data);
+  }
+  return validated;
+}
+
+bool ValidateSignature(bool test_mode, std::string payload) {
+  std::string sig = payload + ".sig";
+  return ValidateSignature(test_mode, payload, sig);
 }

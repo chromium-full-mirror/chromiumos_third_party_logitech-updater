@@ -83,9 +83,31 @@ void CheckImageVersion(std::shared_ptr<CompositeDevice> device,
 
 /**
  * @brief Applies PTZ Pro 2 firmwares.
+ * @param test_sig If true, validate payload with test key and test sig,
+ * otherwise validate it with live key and live sig.
  * @param device PTZ Pro 2 composite device.
  */
-int ApplyPTZPro2Firmware(std::shared_ptr<CompositeDevice> device) {
+int ApplyPTZPro2Firmware(std::shared_ptr<CompositeDevice> device,
+                         bool test_sig) {
+  // Validate signatures.
+  bool validated = ValidateSignature(test_sig, kLogiPtzPro2VideoImagePath);
+  if (!validated) {
+    LOG(ERROR) << "Failed to validate " << kLogiPtzPro2Name
+               << " video firmware signature.";
+    return kLogiErrorSignatureValidationFailed;
+  }
+  validated = ValidateSignature(test_sig, kLogiPtzPro2EepromImagePath);
+  if (!validated) {
+    LOG(ERROR) << "Failed to validate " << kLogiPtzPro2Name
+               << " eeprom firmware signature.";
+    return kLogiErrorSignatureValidationFailed;
+  }
+  validated = ValidateSignature(test_sig, kLogiPtzPro2Mcu2ImagePath);
+  if (!validated) {
+    LOG(ERROR) << "Failed to validate " << kLogiPtzPro2Name
+               << " mcu2 firmware signature.";
+    return kLogiErrorSignatureValidationFailed;
+  }
   device->SetImageBuffer(kLogiDeviceVideo,
                          ReadBinaryFileContent(kLogiPtzPro2VideoImagePath));
   device->SetImageBuffer(kLogiDeviceEeprom,
@@ -145,6 +167,10 @@ int main(int argc, char** argv) {
               "process. This option is used to integrate with Udev.");
 
   DEFINE_bool(force, false, "Force firmware update.");
+  DEFINE_bool(
+      test_sig, false,
+      "If set, validate firmware payload with test key and test sig. "
+      "Otherwise, validate firmware payload with live key and live sig.");
 
   // When run under Udev, device can still be booting up or calibrating and
   // fails to update until it is ready. Use this to delay the update process.
@@ -173,7 +199,7 @@ int main(int argc, char** argv) {
   std::shared_ptr<CompositeDevice> ptzpro2_device =
       std::make_shared<CompositeDevice>(kLogiPtzPro2Pid, kLogiPtzPro2Pid,
                                         kLogiPtzPro2Pid);
-  ApplyPTZPro2Firmware(ptzpro2_device);
+  ApplyPTZPro2Firmware(ptzpro2_device, FLAGS_test_sig);
   if (!ptzpro2_device->AreImagesPresent())
     LOG(ERROR) << kLogiPtzPro2Name << " image not found.";
 
@@ -184,13 +210,13 @@ int main(int argc, char** argv) {
     CheckDeviceVersion(ptzpro2_device);
 
   if (FLAGS_image_version) {
-    ApplyPTZPro2Firmware(ptzpro2_device);
+    ApplyPTZPro2Firmware(ptzpro2_device, FLAGS_test_sig);
     CheckImageVersion(ptzpro2_device, kLogiPtzPro2Name);
   }
 
   ptzpro2_device->SetForceUpdate(FLAGS_force);
   if (FLAGS_update_components && ptzpro2_device->IsDevicePresent()) {
-    error = ApplyPTZPro2Firmware(ptzpro2_device);
+    error = ApplyPTZPro2Firmware(ptzpro2_device, FLAGS_test_sig);
     if (!error)
       error = ptzpro2_device->PerformComponentUpdate();
   }
