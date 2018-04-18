@@ -54,7 +54,10 @@ enum {
   kLogiDeviceGeneric = 0,
   kLogiDeviceVideo,
   kLogiDeviceEeprom,
-  kLogiDeviceMcu2
+  kLogiDeviceMcu2,
+  kLogiDeviceAudio,
+  kLogiDeviceCodec,
+  kLogiDeviceBle,  // Bluetooth Low Energy device.
 };
 
 /**
@@ -70,6 +73,11 @@ class USBDevice {
   int device_type_;
   // Force update without checking version.
   bool force_update_;
+  // If true, perform update with secure boot image.
+  bool secure_boot_;
+  // If set true, this device supports BLE feature.
+  bool support_ble_;
+
  protected:
   int file_descriptor_;
   // Flag to check if the device is being opened.

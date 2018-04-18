@@ -16,12 +16,15 @@ CPPFLAGS += $(PC_CFLAGS)
 all: CXX_BINARY($(BINARY_NAME))
 
 CXX_BINARY($(BINARY_NAME)): \
-	src/main.o \
-	src/utilities.o \
-	src/usb_device.o \
-	src/video_device.o \
-	src/eeprom_device.o \
-	src/mcu2_device.o \
-	src/composite_device.o
+  src/main.o \
+  src/utilities.o \
+  src/usb_device.o \
+  src/video_device.o \
+  src/eeprom_device.o \
+  src/mcu2_device.o \
+  src/audio_device.o \
+  src/codec_device.o \
+  src/ble_device.o \
+  src/composite_device.o
 
 clean: CLEAN(CXX_BINARY($(BINARY_NAME)))

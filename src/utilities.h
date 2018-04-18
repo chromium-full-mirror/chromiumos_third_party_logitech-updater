@@ -208,4 +208,12 @@ bool ValidateSignature(bool test_mode, std::string payload, std::string sig);
  * @return true if validated ok, false otherwise.
  */
 bool ValidateSignature(bool test_mode, std::string payload);
+
+/**
+ * @brief Reverses the bit order in 1 byte only.
+ * @param value Value to reverse. For example, if you pass 0101 0010 to this
+ * method, it will be reversed to 0100 1010.
+ */
+uint8_t ReverseBits(uint8_t value);
+
 #endif /* SRC_UTILITIES_H_ */

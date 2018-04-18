@@ -17,6 +17,8 @@ USBDevice::USBDevice(std::string pid, int type)
     : usb_pid_(pid),
       device_type_(type),
       force_update_(false),
+      secure_boot_(false),
+      support_ble_(false),
       file_descriptor_(-1),
       is_open_(false) {}
 

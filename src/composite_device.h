@@ -28,6 +28,13 @@ class CompositeDevice {
   //   kLogiDeviceMcu2    : mcu2-image-buffer,
   // }
   std::map<int, std::vector<uint8_t>> image_buffers_;
+  std::map<int, std::vector<uint8_t>> secure_headers_;
+
+  // Device with long audio cable sometimes fails to be re-mounted after being
+  // put into dfu mode. Set hub vid and pid and reset flag to reset hub on dfu.
+  std::string hub_vid_;
+  std::string hub_pid_;
+  bool should_reset_hub_;
 
  public:
   CompositeDevice();
@@ -143,5 +150,76 @@ class CompositeDevice {
    * @return kLogiErrorNoError if updated ok, error code otherwise.
    */
   int PerformComponentUpdate();
+
+  /**
+   * @brief Adds a device to the composite device.
+   * @param device_type Device type to add. Use kLogiDeviceAudio,
+   * kLogiDeviceAudio, kLogiDeviceEeprom...
+   * @param dfu_pid If device type is audio, provide DFU pid. By default, dfu
+   * pid is not used for other devices.
+   * @param pid Device product ID.
+   */
+  void AddDevice(int device_type, std::string pid, std::string dfu_pid = "");
+
+  /**
+   * @brief Sets secure header image buffer. It does not retain or copy the
+   * buffer. It replaces the old buffer if existed already in the map.
+   * @param device_type The type of the image buffer. Use kLogiDeviceAudio,
+   * kLogiDeviceCodec...
+   * @param enable If true, enable secure boot update.
+   * @param secure_header The secure header image to set.
+   */
+  void SetSecureHeader(int device_type,
+                       std::vector<uint8_t> secure_header,
+                       bool enable);
+
+  /**
+   * @brief Sets support BLE to read and write BLE device during firmware
+   * update.
+   * @param support_ble If true, the device supports BLE.
+   */
+  void SetSupportBle(bool support_ble);
+
+  /**
+   * @brief Checks if the composite device has Logitech or Logicool firmware.
+   * @param check_video If true, check Logicool firmware on video device.
+   * @param check_audio If true, check Logicool firmware on audio device.
+   * @param logicool True firmware is Logicool.
+   * @return kLogiErrorNoError if checked ok, error code otherwise.
+   */
+  int IsLogicool(bool check_video, bool check_audio, bool* logicool);
+
+  /**
+   * @brief Writes Logicool/tech info to EEPROM.
+   * IMPORTANT: This should apply to LogiGroup only since the EEPROM address is
+   * safe for Group.
+   * @param logicool Write Logicool brand info if true. Logitech otherwise.
+   * @return kLogiErrorNoError if wrote ok, error code otherwise.
+   */
+  int WriteBrandInfoToEeprom(bool logicool);
+
+  /**
+   * @brief Reads Logicool/tech info from EEPROM.
+   * IMPORTANT: This should apply to LogiGroup only since the EEPROM address is
+   * safe for Group.
+   * @param logicool True if Logicool brand.
+   * @return kLogiErrorNoError if read ok, error code otherwise.
+   */
+  int ReadBrandInfoFromEeprom(bool* logicool);
+
+  /**
+   * @brief Performs audio firmware update when the device is in the DFU mode.
+   * @return kLogiErrorNoError if updated ok, error code otherwise.
+   */
+  int PerformDfuAudioUpdate();
+
+  /**
+   * @brief Resets the usb hub (Logi Group long cable). Re-power the usb hub
+   * and re-insert it.
+   * @param vid Usb hub vendor id.
+   * @param pid Usb hub product id.
+   * @return kLogiErrorNoError if no error, error code otherwise.
+   */
+  int ResetUsbHub(std::string vid, std::string pid);
 };
 #endif /* SRC_COMPOSITE_DEVICE_H_ */

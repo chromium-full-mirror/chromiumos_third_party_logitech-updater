@@ -461,3 +461,15 @@ bool ValidateSignature(bool test_mode, std::string payload) {
   std::string sig = payload + ".sig";
   return ValidateSignature(test_mode, payload, sig);
 }
+
+uint8_t ReverseBits(uint8_t value) {
+  int bitcount = sizeof(value) * 8;
+  uint8_t reverse = 0;
+  for (int i = 0; i < bitcount; i++) {
+    // Loops through the bit from right to left. If the bit is 0, just ignore
+    // it. If the bit is 1, set its opposite bit to 1.
+    if ((value & (1 << i)))
+      reverse |= 1 << ((bitcount - 1) - i);
+  }
+  return reverse;
+}

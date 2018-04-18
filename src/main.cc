@@ -15,10 +15,16 @@ namespace {
 // PTZ Pro 2 pid.
 const char kLogiPtzPro2Pid[] = "0x85f";
 
+// MeetUp pids
+const char kLogiMeetUpAudioPid[] = "0x0867";
+const char kLogiMeetUpAudioDfuPid[] = "0x0859";
+const char kLogiMeetUpVideoPid[] = "0x0866";
+
 // These device names are used where real device name cannot be queried from
 // the device, for example, querying image info, checking if device is present,
 // etc...
 const char kLogiPtzPro2Name[] = "PTZ Pro 2";
+const char kLogiMeetUpName[] = "MeetUp";
 
 // PTZ Pro 2 binary image paths.
 const char kLogiPtzPro2VideoImagePath[] =
@@ -27,6 +33,22 @@ const char kLogiPtzPro2EepromImagePath[] =
     "/lib/firmware/logitech/ptzpro2/ptzpro2_eeprom.s19";
 const char kLogiPtzPro2Mcu2ImagePath[] =
     "/lib/firmware/logitech/ptzpro2/ptzpro2_mcu2.bin";
+
+// MeetUp binary image paths.
+const char kLogiMeetUpVideoImagePath[] =
+    "/lib/firmware/logitech/meetup/meetup_video.bin";
+const char kLogiMeetUpEepromImagePath[] =
+    "/lib/firmware/logitech/meetup/meetup_eeprom.s19";
+const char kLogiMeetUpAudioImagePath[] =
+    "/lib/firmware/logitech/meetup/meetup_audio.bin";
+const char kLogiMeetUpCodecImagePath[] =
+    "/lib/firmware/logitech/meetup/meetup_codec.bin";
+const char kLogiMeetUpBleImagePath[] =
+    "/lib/firmware/logitech/meetup/meetup_ble.bin";
+const char kLogiMeetUpAudioLogicoolImagePath[] =
+    "/lib/firmware/logitech/meetup/meetup_audio_logicool.bin";
+const char kLogiMeetUpEepromLogicoolImagePath[] =
+    "/lib/firmware/logitech/meetup/meetup_eeprom_logicool.s19";
 
 /**
  * @brief Prints version info from info map.
@@ -39,6 +61,12 @@ void PrintVersions(std::map<int, std::string> info_map) {
     LOG(INFO) << "Eeprom version: " << info_map[kLogiDeviceEeprom].c_str();
   if (info_map.find(kLogiDeviceMcu2) != info_map.end())
     LOG(INFO) << "Mcu2 version:   " << info_map[kLogiDeviceMcu2].c_str();
+  if (info_map.find(kLogiDeviceAudio) != info_map.end())
+    LOG(INFO) << "Audio version:  " << info_map[kLogiDeviceAudio].c_str();
+  if (info_map.find(kLogiDeviceCodec) != info_map.end())
+    LOG(INFO) << "Codec version:  " << info_map[kLogiDeviceCodec].c_str();
+  if (info_map.find(kLogiDeviceBle) != info_map.end())
+    LOG(INFO) << "BLE version:    " << info_map[kLogiDeviceBle].c_str();
   std::cout << std::endl;
 }
 
@@ -50,17 +78,15 @@ void CheckDeviceVersion(std::shared_ptr<CompositeDevice> device) {
   if (!device->IsDevicePresent())
     return;
 
-  if (device->IsDevicePresent()) {
-    std::string name;
-    device->GetDeviceName(&name);
-    std::map<int, std::string> info_map;
-    int error = device->GetDevicesVersion(&info_map);
-    if (error) {
-      LOG(ERROR) << "Failed to read " << name.c_str() << " versions.";
-    } else {
-      LOG(INFO) << "Device name:    " << name.c_str();
-      PrintVersions(info_map);
-    }
+  std::string name;
+  device->GetDeviceName(&name);
+  std::map<int, std::string> info_map;
+  int error = device->GetDevicesVersion(&info_map);
+  if (error) {
+    LOG(ERROR) << "Failed to read " << name.c_str() << " versions.";
+  } else {
+    LOG(INFO) << "Device name:    " << name.c_str();
+    PrintVersions(info_map);
   }
 }
 
@@ -118,6 +144,83 @@ int ApplyPTZPro2Firmware(std::shared_ptr<CompositeDevice> device,
 }
 
 /**
+ * @brief Checks brand and applies firmware for MeetUp device.
+ * @param device MeetUp device to check and apply firmware.
+ * @return kLogiErrorNoError if checked ok, error code otherwise.
+ */
+int ApplyMeetUpFirmware(std::shared_ptr<CompositeDevice> device,
+                        bool test_sig) {
+  // Validates signatures.
+  bool validated = ValidateSignature(test_sig, kLogiMeetUpVideoImagePath);
+  if (!validated) {
+    LOG(ERROR) << "Failed to validate " << kLogiMeetUpName
+               << " video firmware signature.";
+    return kLogiErrorSignatureValidationFailed;
+  }
+  validated = ValidateSignature(test_sig, kLogiMeetUpCodecImagePath);
+  if (!validated) {
+    LOG(ERROR) << "Failed to validate " << kLogiMeetUpName
+               << " codec firmware signature.";
+    return kLogiErrorSignatureValidationFailed;
+  }
+  validated = ValidateSignature(test_sig, kLogiMeetUpBleImagePath);
+  if (!validated) {
+    LOG(ERROR) << "Failed to validate " << kLogiMeetUpName
+               << " ble firmware signature.";
+    return kLogiErrorSignatureValidationFailed;
+  }
+  validated = ValidateSignature(test_sig, kLogiMeetUpEepromImagePath);
+  if (!validated) {
+    LOG(ERROR) << "Failed to validate " << kLogiMeetUpName
+               << " eeprom firmware signature.";
+    return kLogiErrorSignatureValidationFailed;
+  }
+  validated = ValidateSignature(test_sig, kLogiMeetUpEepromLogicoolImagePath);
+  if (!validated) {
+    LOG(ERROR) << "Failed to validate " << kLogiMeetUpName
+               << " Logicool eeprom firmware signature.";
+    return kLogiErrorSignatureValidationFailed;
+  }
+  validated = ValidateSignature(test_sig, kLogiMeetUpAudioImagePath);
+  if (!validated) {
+    LOG(ERROR) << "Failed to validate " << kLogiMeetUpName
+               << " audio firmware signature.";
+    return kLogiErrorSignatureValidationFailed;
+  }
+  validated = ValidateSignature(test_sig, kLogiMeetUpAudioLogicoolImagePath);
+  if (!validated) {
+    LOG(ERROR) << "Failed to validate " << kLogiMeetUpName
+               << " Logicool audio firmware signature.";
+    return kLogiErrorSignatureValidationFailed;
+  }
+
+  bool logicool = false;
+  if (device->IsDevicePresent()) {
+    int error = device->IsLogicool(true, false, &logicool);
+    if (error)
+      return error;
+  }
+  device->SetImageBuffer(kLogiDeviceVideo,
+                         ReadBinaryFileContent(kLogiMeetUpVideoImagePath));
+  device->SetImageBuffer(kLogiDeviceCodec,
+                         ReadBinaryFileContent(kLogiMeetUpCodecImagePath));
+  device->SetImageBuffer(kLogiDeviceBle,
+                         ReadBinaryFileContent(kLogiMeetUpBleImagePath));
+  std::string eeprom_image_path = kLogiMeetUpEepromImagePath;
+  std::string audio_image_path = kLogiMeetUpAudioImagePath;
+  if (logicool) {
+    eeprom_image_path = kLogiMeetUpEepromLogicoolImagePath;
+    audio_image_path = kLogiMeetUpAudioLogicoolImagePath;
+  }
+  device->SetImageBuffer(kLogiDeviceEeprom,
+                         ReadBinaryFileContent(eeprom_image_path));
+  device->SetImageBuffer(kLogiDeviceAudio,
+                         ReadBinaryFileContent(audio_image_path));
+
+  return kLogiErrorNoError;
+}
+
+/**
  * @brief Configures the logging system.
  * @param log_file Specifies the log file to redirect to or stdout for console
  * output.
@@ -160,6 +263,11 @@ int main(int argc, char** argv) {
               "Perform firmware update on one component at a time. This "
               "option is used to integrate with Udev.");
 
+  // Performs firmware update on audio device when it is in DFU mode.
+  DEFINE_bool(update_dfu_audio, false,
+              "Perform audio firmware update when audio device is in DFU mode. "
+              "This option is used to integrate with Udev.");
+
   DEFINE_bool(lock, false,
               "Check and lock the firmware updater with lock file at "
               "/tmp/logitech-updater.lock. When run with this option, only 1 "
@@ -193,9 +301,8 @@ int main(int argc, char** argv) {
     sleep(FLAGS_delay);
   }
   int error = kLogiErrorNoError;
-  std::map<int, std::string> info_map;
 
-  // Check image binaries of PTZ Pro2 device.
+  // PTZ Pro 2 device.
   std::shared_ptr<CompositeDevice> ptzpro2_device =
       std::make_shared<CompositeDevice>(kLogiPtzPro2Pid, kLogiPtzPro2Pid,
                                         kLogiPtzPro2Pid);
@@ -203,23 +310,55 @@ int main(int argc, char** argv) {
   if (!ptzpro2_device->AreImagesPresent())
     LOG(ERROR) << kLogiPtzPro2Name << " image not found.";
 
+  // MeetUp device.
+  std::shared_ptr<CompositeDevice> meetup_device =
+      std::make_shared<CompositeDevice>();
+  meetup_device->AddDevice(kLogiDeviceVideo, kLogiMeetUpVideoPid);
+  meetup_device->AddDevice(kLogiDeviceEeprom, kLogiMeetUpVideoPid);
+  meetup_device->AddDevice(kLogiDeviceAudio, kLogiMeetUpAudioPid,
+                           kLogiMeetUpAudioDfuPid);
+  meetup_device->AddDevice(kLogiDeviceCodec, kLogiMeetUpAudioPid);
+  meetup_device->AddDevice(kLogiDeviceBle, kLogiMeetUpAudioPid);
+  meetup_device->SetSupportBle(true);
+  ApplyMeetUpFirmware(meetup_device, FLAGS_test_sig);
+  if (!meetup_device->AreImagesPresent())
+    LOG(ERROR) << kLogiMeetUpName << " image not found.";
+
   if (FLAGS_binary_version)
     std::cout << kLogiBinaryVersion << std::endl;
 
-  if (FLAGS_device_version)
+  if (FLAGS_device_version) {
     CheckDeviceVersion(ptzpro2_device);
+    CheckDeviceVersion(meetup_device);
+  }
 
   if (FLAGS_image_version) {
     ApplyPTZPro2Firmware(ptzpro2_device, FLAGS_test_sig);
     CheckImageVersion(ptzpro2_device, kLogiPtzPro2Name);
+
+    ApplyMeetUpFirmware(meetup_device, FLAGS_test_sig);
+    CheckImageVersion(meetup_device, kLogiMeetUpName);
   }
 
   ptzpro2_device->SetForceUpdate(FLAGS_force);
-  if (FLAGS_update_components && ptzpro2_device->IsDevicePresent()) {
-    error = ApplyPTZPro2Firmware(ptzpro2_device, FLAGS_test_sig);
-    if (!error)
-      error = ptzpro2_device->PerformComponentUpdate();
-  }
+  meetup_device->SetForceUpdate(FLAGS_force);
 
+  if (FLAGS_update_components || FLAGS_update_dfu_audio) {
+    if (FLAGS_update_components && ptzpro2_device->IsDevicePresent()) {
+      error = ApplyPTZPro2Firmware(ptzpro2_device, FLAGS_test_sig);
+      if (!error)
+        error = ptzpro2_device->PerformComponentUpdate();
+    }
+
+    if (meetup_device->IsDevicePresent()) {
+      error = ApplyMeetUpFirmware(meetup_device, FLAGS_test_sig);
+      if (!error) {
+        if (FLAGS_update_components)
+          error = meetup_device->PerformComponentUpdate();
+        if (FLAGS_update_dfu_audio)
+          error = meetup_device->PerformDfuAudioUpdate();
+      }
+    }
+  }
   return error;
 }
