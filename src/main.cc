@@ -20,11 +20,15 @@ const char kLogiMeetUpAudioPid[] = "0x0867";
 const char kLogiMeetUpAudioDfuPid[] = "0x0859";
 const char kLogiMeetUpVideoPid[] = "0x0866";
 
+// PTZ Pro pid
+const char kLogiPtzProVideoPid[] = "0x0853";
+
 // These device names are used where real device name cannot be queried from
 // the device, for example, querying image info, checking if device is present,
 // etc...
 const char kLogiPtzPro2Name[] = "PTZ Pro 2";
 const char kLogiMeetUpName[] = "MeetUp";
+const char kLogiPtzProName[] = "PTZ Pro";
 
 // PTZ Pro 2 binary image paths.
 const char kLogiPtzPro2VideoImagePath[] =
@@ -49,6 +53,12 @@ const char kLogiMeetUpAudioLogicoolImagePath[] =
     "/lib/firmware/logitech/meetup/meetup_audio_logicool.bin";
 const char kLogiMeetUpEepromLogicoolImagePath[] =
     "/lib/firmware/logitech/meetup/meetup_eeprom_logicool.s19";
+
+// PTZ Pro binary image paths.
+const char kLogiPtzProVideoImagePath[] =
+    "/lib/firmware/logitech/ptzpro/ptzpro_video.bin";
+const char kLogiPtzProEepromImagePath[] =
+    "/lib/firmware/logitech/ptzpro/ptzpro_eeprom.s19";
 
 /**
  * @brief Prints version info from info map.
@@ -221,6 +231,32 @@ int ApplyMeetUpFirmware(std::shared_ptr<CompositeDevice> device,
 }
 
 /**
+ * @brief Applies PTZ Pro firmwares.
+ * @param device PTZ Pro composite device.
+ */
+int ApplyPTZProFirmware(std::shared_ptr<CompositeDevice> device,
+                        bool test_sig) {
+  // Validates signatures.
+  bool validated = ValidateSignature(test_sig, kLogiPtzProVideoImagePath);
+  if (!validated) {
+    LOG(ERROR) << "Failed to validate " << kLogiPtzProName
+               << " video firmware signature.";
+    return kLogiErrorSignatureValidationFailed;
+  }
+  validated = ValidateSignature(test_sig, kLogiPtzProEepromImagePath);
+  if (!validated) {
+    LOG(ERROR) << "Failed to validate " << kLogiPtzProName
+               << " eeprom firmware signature.";
+    return kLogiErrorSignatureValidationFailed;
+  }
+  device->SetImageBuffer(kLogiDeviceVideo,
+                         ReadBinaryFileContent(kLogiPtzProVideoImagePath));
+  device->SetImageBuffer(kLogiDeviceEeprom,
+                         ReadBinaryFileContent(kLogiPtzProEepromImagePath));
+  return kLogiErrorNoError;
+}
+
+/**
  * @brief Configures the logging system.
  * @param log_file Specifies the log file to redirect to or stdout for console
  * output.
@@ -291,7 +327,6 @@ int main(int argc, char** argv) {
 
   // Configures log file.
   ConfigureLogging(FLAGS_log_to);
-
   if (FLAGS_lock && !LockUpdater()) {
     LOG(ERROR) << "There is another logitech-updater running. Exiting now...";
     return 0;
@@ -324,12 +359,20 @@ int main(int argc, char** argv) {
   if (!meetup_device->AreImagesPresent())
     LOG(ERROR) << kLogiMeetUpName << " image not found.";
 
+  // PTZ Pro device.
+  std::shared_ptr<CompositeDevice> ptzpro_device =
+      std::make_shared<CompositeDevice>();
+  ptzpro_device->AddDevice(kLogiDeviceVideo, kLogiPtzProVideoPid);
+  ptzpro_device->AddDevice(kLogiDeviceEeprom, kLogiPtzProVideoPid);
+  ApplyPTZProFirmware(ptzpro_device, FLAGS_test_sig);
+
   if (FLAGS_binary_version)
     std::cout << kLogiBinaryVersion << std::endl;
 
   if (FLAGS_device_version) {
     CheckDeviceVersion(ptzpro2_device);
     CheckDeviceVersion(meetup_device);
+    CheckDeviceVersion(ptzpro_device);
   }
 
   if (FLAGS_image_version) {
@@ -338,16 +381,26 @@ int main(int argc, char** argv) {
 
     ApplyMeetUpFirmware(meetup_device, FLAGS_test_sig);
     CheckImageVersion(meetup_device, kLogiMeetUpName);
+
+    ApplyPTZProFirmware(ptzpro_device, FLAGS_test_sig);
+    CheckImageVersion(ptzpro_device, kLogiPtzProName);
   }
 
   ptzpro2_device->SetForceUpdate(FLAGS_force);
   meetup_device->SetForceUpdate(FLAGS_force);
+  ptzpro_device->SetForceUpdate(FLAGS_force);
 
   if (FLAGS_update_components || FLAGS_update_dfu_audio) {
     if (FLAGS_update_components && ptzpro2_device->IsDevicePresent()) {
       error = ApplyPTZPro2Firmware(ptzpro2_device, FLAGS_test_sig);
       if (!error)
         error = ptzpro2_device->PerformComponentUpdate();
+    }
+
+    if (FLAGS_update_components && ptzpro_device->IsDevicePresent()) {
+      error = ApplyPTZProFirmware(ptzpro_device, FLAGS_test_sig);
+      if (!error)
+        error = ptzpro_device->PerformComponentUpdate();
     }
 
     if (meetup_device->IsDevicePresent()) {

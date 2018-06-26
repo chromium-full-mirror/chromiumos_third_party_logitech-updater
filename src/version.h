@@ -5,6 +5,6 @@
 #ifndef SRC_VERSION_H_
 #define SRC_VERSION_H_
 
-const char kLogiBinaryVersion[] = "1.0.1.105";
+const char kLogiBinaryVersion[] = "1.0.1.106";
 
 #endif /* SRC_VERSION_H_ */
