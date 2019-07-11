@@ -63,6 +63,7 @@ enum {
   kLogiDeviceAudio,
   kLogiDeviceCodec,
   kLogiDeviceBle,  // Bluetooth Low Energy device.
+  kLogiDeviceHdmi,
   kLogiDeviceVideoBle,
   kLogiDeviceTableHub,
   kLogiDeviceMicPod,
@@ -86,6 +87,8 @@ class USBDevice {
   bool secure_boot_;
   // If set true, this device supports BLE feature.
   bool support_ble_;
+  // For firmware without embedded version string, use separate version file.
+  std::string version_file_;
 
  protected:
   int file_descriptor_;
@@ -183,6 +186,12 @@ class USBDevice {
    * @return kLogiErrorNoError if checked ok, error code otherwise
    */
   virtual int CheckForUpdate(std::vector<uint8_t> buffer, bool* should_update);
+
+  /**
+   * @brief Set version text file.
+   * @param version_file The path to version file to be set.
+   */
+  void SetVersionFile(const std::string& version_file);
 
  protected:
   /**

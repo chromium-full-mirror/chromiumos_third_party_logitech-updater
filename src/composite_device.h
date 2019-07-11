@@ -143,6 +143,16 @@ class CompositeDevice {
   void SetImageBuffer(int device_type, std::vector<uint8_t> buffer);
 
   /**
+   * @brief Set version text file for firmware. In case some firmware binary
+   * does not have embedded version, the version file helps to get the version
+   * of the bin file.
+   * @param device_type The usb device type. Use kLogiDeviceVideo,
+   * kLogiDeviceEeprom... for this type.
+   * @param version_file The path to the version file.
+   */
+  void SetVersionFile(int device_type, const std::string& version_file);
+
+  /**
    * @brief Set force update to ignore firmware version checking.
    * @param force If true, ignore version checking and perform update.
    */
@@ -181,9 +191,10 @@ class CompositeDevice {
 
   /**
    * @brief Perform composite device components one at a time.
+   * @param updated True if did perform update on component, false otherwise.
    * @return kLogiErrorNoError if updated ok, error code otherwise.
    */
-  int PerformComponentUpdate();
+  int PerformComponentUpdate(bool* updated);
 
   /**
    * @brief Adds a device to the composite device.
@@ -255,6 +266,13 @@ class CompositeDevice {
    * @return kLogiErrorNoError if no error, error code otherwise.
    */
   int ResetUsbHub(std::string vid, std::string pid);
+
+  /**
+   * @brief Resets the device using TDE mode.
+   * @param pid Logitech usb product id.
+   * @return kLogiErrorNoError if no error, error code otherwise.
+   */
+  int PowerCycleTDEMode(std::string pid);
 
   /**
    * @brief Updates the firmware for the entire system.

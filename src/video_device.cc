@@ -364,6 +364,8 @@ int VideoDevice::PerformUpdate(std::vector<uint8_t> buffer,
     name = "video";
   } else if (device_type_ == kLogiDeviceMcu2) {
     name = "mcu2";
+  } else if (device_type_ == kLogiDeviceHdmi) {
+    name = "HDMI";
   }
 
   LOG(INFO) << "Checking " << name << " firmware...";

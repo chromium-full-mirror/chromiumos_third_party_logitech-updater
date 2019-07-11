@@ -25,6 +25,7 @@ CXX_BINARY($(BINARY_NAME)): \
   src/audio_device.o \
   src/codec_device.o \
   src/ble_device.o \
+  src/hdmi_device.o \
   src/composite_device.o \
   src/tablehub_device.o
 

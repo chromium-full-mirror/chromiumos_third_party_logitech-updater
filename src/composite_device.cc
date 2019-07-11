@@ -9,6 +9,8 @@
 #include <base/logging.h>
 #include <brillo/syslog_logging.h>
 #include <unistd.h>
+#include <linux/hidraw.h>
+#include <thread>
 #include <libusb.h>
 #include <thread>
 #include <chrono>
@@ -22,8 +24,20 @@
 #include "audio_device.h"
 #include "ble_device.h"
 #include "codec_device.h"
+#include "hdmi_device.h"
 #include "tablehub_device.h"
 #include "usb_device.h"
+
+constexpr int kDefaultPwrCycleMs = 2000;
+// Commands to powercycle on mcu chip.
+constexpr uint8_t kMcuTdeUsagePage = 0x1A;
+constexpr uint8_t kMcuTdeEnable = 0x02;
+constexpr uint8_t kMcuTdeOn = 0x01;
+constexpr uint8_t kMcuTdeOff = 0x00;
+constexpr uint8_t kMcuPinClear = 0x05;
+constexpr uint8_t kMcuPinSet = 0x06;
+constexpr uint8_t kMcuPwrSet = 0x2D;
+constexpr uint8_t kMcuPwrReset = 0x2E;
 
 CompositeDevice::CompositeDevice() {}
 
@@ -110,6 +124,9 @@ int CompositeDevice::GetDevicesVersionFromAudio(
 int CompositeDevice::GetDeviceName(std::string& name) {
   // Device name is stored on video device.
   std::shared_ptr<USBDevice> device = GetDeviceFromType(kLogiDeviceVideo);
+  // Added hdmi in case of tap.
+  if (device == nullptr)
+    device = GetDeviceFromType(kLogiDeviceHdmi);
   if (device == nullptr)
     return kLogiErrorDeviceNotPresent;
   device->OpenDevice();
@@ -191,7 +208,9 @@ bool CompositeDevice::IsDeviceUpToDate() {
 }
 
 bool CompositeDevice::IsDevicePresent() {
-  return IsDevicePresent(kLogiDeviceVideo);
+  // Added checking for HDMI in case of Tap device.
+  return (IsDevicePresent(kLogiDeviceVideo) ||
+          IsDevicePresent(kLogiDeviceHdmi));
 }
 
 bool CompositeDevice::IsDevicePresent(int device_type) {
@@ -221,14 +240,16 @@ std::shared_ptr<USBDevice> CompositeDevice::GetDeviceFromType(int device_type) {
   return nullptr;
 }
 
-int CompositeDevice::PerformComponentUpdate() {
+int CompositeDevice::PerformComponentUpdate(bool* updated) {
   // This method checks and updates these devices in order: eeprom, mcu2, video,
   // ble, codec, then reboot and updates audio. It is done this way because of
   // rebooting and wait for device causes permission issue on the device mount
   // point (device is mounted as root instead of cfm-firmware-updaters user).
   std::vector<int> types = {kLogiDeviceEeprom, kLogiDeviceMcu2,
-                            kLogiDeviceVideo, kLogiDeviceBle, kLogiDeviceCodec};
+                            kLogiDeviceHdmi,   kLogiDeviceVideo,
+                            kLogiDeviceBle,    kLogiDeviceCodec};
   bool did_video_update = false;
+  *updated = false;
   std::string name;
   GetDeviceName(name);
   LOG(INFO) << "Checking " << name << " firmwares...";
@@ -249,14 +270,15 @@ int CompositeDevice::PerformComponentUpdate() {
       return error;
     }
     if (did_update && (type == kLogiDeviceEeprom || type == kLogiDeviceMcu2 ||
-                       type == kLogiDeviceVideo))
+                       type == kLogiDeviceVideo || type == kLogiDeviceHdmi))
       did_video_update = true;
 
     if (did_video_update && type == kLogiDeviceVideo)
       device->RebootDevice();
 
     device->CloseDevice();
-
+    if (did_update)
+      *updated = true;
     if (did_update && type == kLogiDeviceCodec) {
       // Updating codec device requires reset. This causes permission issue in
       // minijail when device comes back. Return and exit the updater to allow
@@ -307,6 +329,9 @@ void CompositeDevice::AddDevice(int device_type,
       break;
     case kLogiDeviceBle:
       devices_.push_back(std::make_shared<BleDevice>(pid));
+      break;
+    case kLogiDeviceHdmi:
+      devices_.push_back(std::make_shared<HdmiDevice>(pid));
       break;
     case kLogiDeviceTableHub:
       devices_.push_back(std::make_shared<TableHubDevice>(pid));
@@ -458,6 +483,63 @@ int CompositeDevice::ResetUsbHub(std::string vid, std::string pid) {
       close(fd);
   }
   return error;
+}
+
+int CompositeDevice::PowerCycleTDEMode(std::string pid) {
+  std::vector<std::string> dev_paths =
+      FindDevices(kDefaultAudioDeviceMountPoint, kDefaultAudioDevicePoint, pid);
+  if (dev_paths.empty())
+    return kLogiErrorUsbPidNotFound;
+  int fd = open(dev_paths.at(0).c_str(), O_RDWR | O_NONBLOCK, 0);
+  if (fd < 0)
+    return kLogiErrorDeviceNotOpen;
+  const std::vector<uint8_t> enableTDE = {kMcuTdeUsagePage, kMcuTdeEnable,
+                                          kMcuTdeOn, 0, 0};
+  const std::vector<uint8_t> clearPwrPin = {kMcuTdeUsagePage, kMcuPinClear,
+                                            kMcuPwrSet, 0, 0};
+  const std::vector<uint8_t> clearRstPin = {kMcuTdeUsagePage, kMcuPinClear,
+                                            kMcuPwrReset, 0, 0};
+  const std::vector<uint8_t> setPwrPin = {kMcuTdeUsagePage, kMcuPinSet,
+                                          kMcuPwrSet, 0, 0};
+  const std::vector<uint8_t> setRstPin = {kMcuTdeUsagePage, kMcuPinSet,
+                                          kMcuPwrReset, 0, 0};
+  const std::vector<uint8_t> disableTDE = {kMcuTdeUsagePage, kMcuTdeEnable,
+                                           kMcuTdeOff, 0, 0};
+  // Enable TDE mode on the device.
+  int result = ioctl(fd, HIDIOCSFEATURE(enableTDE.size()), enableTDE.data());
+  // Clear power pin on the device.
+  if (result >= 0)
+    result = ioctl(fd, HIDIOCSFEATURE(clearPwrPin.size()), clearPwrPin.data());
+  // Clear reset pin on the device.
+  if (result >= 0)
+    result = ioctl(fd, HIDIOCSFEATURE(clearRstPin.size()), clearRstPin.data());
+  // Wait for 2s after clearing reset pin and set power pin.
+  if (result >= 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(kDefaultPwrCycleMs));
+    result = ioctl(fd, HIDIOCSFEATURE(setPwrPin.size()), setPwrPin.data());
+  }
+  // Wait for 2s after power pin set and set reset pin.
+  if (result >= 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(kDefaultPwrCycleMs));
+    result = ioctl(fd, HIDIOCSFEATURE(setRstPin.size()), setRstPin.data());
+  }
+  // Disable TDE mode on the device.
+  if (result >= 0)
+    result = ioctl(fd, HIDIOCSFEATURE(disableTDE.size()), disableTDE.data());
+  close(fd);
+  if (result < 0) {
+    LOG(ERROR) << "Failed to send reset command to device.";
+    return kLogiErrorIOControlOperationFailed;
+  }
+  return kLogiErrorNoError;
+}
+
+void CompositeDevice::SetVersionFile(int device_type,
+                                     const std::string& version_file) {
+  std::shared_ptr<USBDevice> device = GetDeviceFromType(device_type);
+  if (!device)
+    return;
+  device->SetVersionFile(version_file);
 }
 
 int CompositeDevice::PerformSystemUpdate() {
@@ -678,6 +760,7 @@ int CompositeDevice::GetComponentCount(int& count,
   if (topology.video_version.length() != 0 &&
       CompareVersions(topology.video_version,
                       kLogiDefaultRallyVideoVersion) < 0)
+
     count++;
   if (topology.video_eeprom_version.length() != 0 &&
       CompareVersions(topology.video_eeprom_version,

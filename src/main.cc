@@ -30,6 +30,10 @@ const char kLogiMeetUpVideoPid[] = "0x0866";
 // PTZ Pro pid
 const char kLogiPtzProVideoPid[] = "0x0853";
 
+// Tap pids.
+const char kLogiTapHdmiPid[] = "0x0876";
+const char kLogiTapMcuPid[] = "0x0872";
+
 // Rally pid
 const char kLogiRallyTableHubPid[] = "0x088f";
 const char kLogiRallyVideoPid[] = "0x0881";
@@ -42,6 +46,7 @@ const char kLogiRallyAudioDfuPid[] = "0x0886";
 const char kLogiPtzPro2Name[] = "PTZ Pro 2";
 const char kLogiMeetUpName[] = "MeetUp";
 const char kLogiPtzProName[] = "PTZ Pro";
+const char kLogiTapName[] = "Tap";
 const char kLogiRallyName[] = "Rally";
 
 // PTZ Pro 2 binary image paths.
@@ -74,6 +79,11 @@ const char kLogiPtzProVideoImagePath[] =
 const char kLogiPtzProEepromImagePath[] =
     "/lib/firmware/logitech/ptzpro/ptzpro_eeprom.s19";
 
+// Tap binary image paths.
+const char kLogiTapHdmiImagePath[] = "/lib/firmware/logitech/tap/tap_hdmi.bin";
+const char kLogiTapHdmiVersionFilePath[] =
+    "/lib/firmware/logitech/tap/tap_hdmi_version.bin";
+
 // Rally binaries image path.
 const char kLogiRallyImagePath[] = "/lib/firmware/logitech/rally/tablehub.bin";
 // Rally binary versions path.
@@ -97,6 +107,8 @@ void PrintVersions(std::map<int, std::string> info_map) {
     LOG(INFO) << "Codec version:  " << info_map[kLogiDeviceCodec].c_str();
   if (info_map.find(kLogiDeviceBle) != info_map.end())
     LOG(INFO) << "BLE version:    " << info_map[kLogiDeviceBle].c_str();
+  if (info_map.find(kLogiDeviceHdmi) != info_map.end())
+    LOG(INFO) << "HDMI version:   " << info_map[kLogiDeviceHdmi].c_str();
   if (info_map.find(kLogiDeviceVideoBle) != info_map.end())
     LOG(INFO) << "Video BLE version:   "
               << info_map[kLogiDeviceVideoBle].c_str();
@@ -299,6 +311,28 @@ int ApplyPTZProFirmware(std::shared_ptr<CompositeDevice> device,
 }
 
 /**
+ * @brief Applies Tap firmwares.
+ * @param device Tap composite device.
+ * @param test_sig True if using test signature.
+ */
+int ApplyTapFirmware(std::shared_ptr<CompositeDevice> device, bool test_sig) {
+  // Validates signatures.
+  std::vector<std::string> binpaths = {kLogiTapHdmiImagePath,
+                                       kLogiTapHdmiVersionFilePath};
+  for (const auto& binpath : binpaths) {
+    if (!ValidateSignature(test_sig, binpath)) {
+      LOG(ERROR) << "Failed to validate " << kLogiTapName
+                 << " binary signature " << binpath.c_str();
+      return kLogiErrorSignatureValidationFailed;
+    }
+  }
+  device->SetImageBuffer(kLogiDeviceHdmi,
+                         ReadBinaryFileContent(kLogiTapHdmiImagePath));
+  device->SetVersionFile(kLogiDeviceHdmi, kLogiTapHdmiVersionFilePath);
+  return kLogiErrorNoError;
+}
+
+/**
  * @brief Applies Rally firmwares.
  * @param device Rally composite device.
  */
@@ -444,6 +478,12 @@ int main(int argc, char** argv) {
   if (!rally_system->AreImagesPresent())
     LOG(ERROR) << kLogiRallyName << " image not found.";
 
+  // Tap device.
+  std::shared_ptr<CompositeDevice> tap_device =
+      std::make_shared<CompositeDevice>();
+  tap_device->AddDevice(kLogiDeviceHdmi, kLogiTapHdmiPid);
+  ApplyTapFirmware(tap_device, FLAGS_test_sig);
+
   if (FLAGS_binary_version)
     std::cout << kLogiBinaryVersion << std::endl;
 
@@ -451,6 +491,7 @@ int main(int argc, char** argv) {
     CheckDeviceVersion(ptzpro2_device);
     CheckDeviceVersion(meetup_device);
     CheckDeviceVersion(ptzpro_device);
+    CheckDeviceVersion(tap_device);
     CheckDeviceVersion(rally_system);
   }
 
@@ -464,6 +505,9 @@ int main(int argc, char** argv) {
     ApplyPTZProFirmware(ptzpro_device, FLAGS_test_sig);
     CheckImageVersion(ptzpro_device, kLogiPtzProName);
 
+    ApplyTapFirmware(tap_device, FLAGS_test_sig);
+    CheckImageVersion(tap_device, kLogiTapName);
+
     ApplyRallyFirmware(rally_system, FLAGS_test_sig);
     CheckImageVersion(rally_system, kLogiRallyName);
   }
@@ -471,30 +515,41 @@ int main(int argc, char** argv) {
   ptzpro2_device->SetForceUpdate(FLAGS_force);
   meetup_device->SetForceUpdate(FLAGS_force);
   ptzpro_device->SetForceUpdate(FLAGS_force);
+  tap_device->SetForceUpdate(FLAGS_force);
   rally_system->SetForceUpdate(FLAGS_force);
-
+  bool did_update = false;
   if (FLAGS_update_components || FLAGS_update_dfu_audio) {
     if (FLAGS_update_components && ptzpro2_device->IsDevicePresent()) {
       error = ApplyPTZPro2Firmware(ptzpro2_device, FLAGS_test_sig);
       if (!error)
-        error = ptzpro2_device->PerformComponentUpdate();
+        error = ptzpro2_device->PerformComponentUpdate(&did_update);
     }
 
     if (FLAGS_update_components && ptzpro_device->IsDevicePresent()) {
       error = ApplyPTZProFirmware(ptzpro_device, FLAGS_test_sig);
       if (!error)
-        error = ptzpro_device->PerformComponentUpdate();
+        error = ptzpro_device->PerformComponentUpdate(&did_update);
     }
 
     if (meetup_device->IsDevicePresent()) {
       error = ApplyMeetUpFirmware(meetup_device, FLAGS_test_sig);
       if (!error) {
         if (FLAGS_update_components)
-          error = meetup_device->PerformComponentUpdate();
+          error = meetup_device->PerformComponentUpdate(&did_update);
         if (FLAGS_update_dfu_audio)
           error = meetup_device->PerformDfuAudioUpdate();
       }
     }
+
+    if (FLAGS_update_components && tap_device->IsDevicePresent()) {
+      error = ApplyTapFirmware(tap_device, FLAGS_test_sig);
+      if (!error) {
+        error = tap_device->PerformComponentUpdate(&did_update);
+        if (did_update)
+          tap_device->PowerCycleTDEMode(kLogiTapMcuPid);
+      }
+    }
+
     if (rally_system->IsDevicePresent(kLogiDeviceTableHub)) {
       error = ApplyRallyFirmware(rally_system, FLAGS_test_sig);
       if (!error)

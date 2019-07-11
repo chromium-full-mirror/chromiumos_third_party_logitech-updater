@@ -93,3 +93,7 @@ int USBDevice::CheckForUpdate(std::vector<uint8_t> buffer,
   }
   return kLogiErrorNoError;
 }
+
+void USBDevice::SetVersionFile(const std::string& version_file) {
+  version_file_ = version_file;
+}
