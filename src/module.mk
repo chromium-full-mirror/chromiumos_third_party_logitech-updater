@@ -6,7 +6,7 @@ include common.mk
 
 BINARY_NAME := logitech-updater
 
-PC_DEPS = libbrillo-$(BASE_VER) libchrome-$(BASE_VER) libcrypto libssl
+PC_DEPS = libbrillo-$(BASE_VER) libchrome-$(BASE_VER) libcrypto libssl libusb-1.0
 PC_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PC_DEPS))
 PC_LIBS := $(shell $(PKG_CONFIG) --libs $(PC_DEPS))
 LDLIBS += $(PC_LIBS)
@@ -25,6 +25,7 @@ CXX_BINARY($(BINARY_NAME)): \
   src/audio_device.o \
   src/codec_device.o \
   src/ble_device.o \
-  src/composite_device.o
+  src/composite_device.o \
+  src/tablehub_device.o
 
 clean: CLEAN(CXX_BINARY($(BINARY_NAME)))

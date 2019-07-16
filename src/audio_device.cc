@@ -7,12 +7,17 @@
 #include <fcntl.h>
 #include <linux/hidraw.h>
 #include <string.h>
+#include <stdio.h>
 #include <sys/ioctl.h>
 #include <algorithm>
 #include <thread>
+#include <chrono>
+#include <iostream>
 #include "utilities.h"
 
 const char kDefaultAudioDfuModeVersion[] = "1.0.000";
+// HID report number to get device topology.
+constexpr int kLogiReportNumberGetSystemTopology = 0x3E;
 // HID report number to set device into info querying mode in DFU.
 constexpr int kLogiReportNumberSetInfoInDfuMode = 0x02;
 // HID report number to set data in DFU mode.
@@ -82,6 +87,13 @@ constexpr int kLogiHidReportBleNameAppSetCmd = 0x50;
 constexpr int kLogiHidReportBleNameAppSetData = 0x0A;
 constexpr int kLogiBleDataDeviceNameStart = 35;
 constexpr int kLogiBleDataDeviceNameSize = 29;
+constexpr int kTopologyBufferSize = 513;
+constexpr int kTopologyStartIndex = 4;
+constexpr int kTopologyMaxElements = 15;
+
+constexpr int kVersionInfoRowNum = 5;
+constexpr int kVersionInfoColNum = 2;
+constexpr int kVersionInfoOffset = 3;
 
 //  These constants are addresses and values of signature which is embedded in
 //  the firmware binary.
@@ -785,6 +797,71 @@ int AudioDevice::IsLogicool(bool* is_logicool) {
     return error;
   }
   *is_logicool = (data[1] == 0x01) ? true : false;
+  return kLogiErrorNoError;
+}
+
+int AudioDevice::ReadSystemTopology(SystemTopology* topology) {
+  if (!is_open_ || is_dfu_mode_)
+    return kLogiErrorDeviceNotOpen;
+  std::vector<uint8_t> data(kTopologyBufferSize);
+  data[0] = kLogiReportNumberGetSystemTopology;
+  int error = ioctl(file_descriptor_, HIDIOCGFEATURE(data.size()), data.data());
+  if (error < 0) {
+    return kLogiErrorIOControlOperationFailed;
+  }
+  int index = kTopologyStartIndex;
+  for (int i = 0; i < kTopologyMaxElements; i++) {
+    if (index >= data.size() || index + sizeof(DeviceInfo) > data.size())
+      return kLogiErrorInvalidResultData;
+    struct DeviceInfo device;
+    memcpy(&device, &data[index], sizeof(DeviceInfo));
+    if (device.id == kLogiTableHubId) {
+      topology->tablehub = device;
+    } else if (device.id >= kLogiMicpodIdStart &&
+               device.id <= kLogiMicpodIdEnd) {
+      topology->micpods.push_back(device);
+    } else if (device.id >= kLogiSplitterIdStart &&
+               device.id <= kLogiSplitterIdEnd) {
+      topology->splitters.push_back(device);
+    }
+    index += sizeof(DeviceInfo);
+  }
+  uint32_t version_info[kVersionInfoRowNum][kVersionInfoColNum];
+  index = sizeof(DeviceInfo) * kTopologyMaxElements + kVersionInfoOffset;
+  if (index >= data.size() || index + sizeof(version_info) > data.size())
+    return kLogiErrorInvalidResultData;
+  memcpy(&version_info, &data[index], sizeof(version_info));
+  std::string version;
+  for (int i = 0; i < kVersionInfoRowNum; i++) {
+    bool is_version = GetDeviceVersionFromInt(version_info[i][1], &version);
+    if (!is_version)
+      return kLogiErrorInvalidDeviceVersionString;
+    switch (version_info[i][0]) {
+      case 1:
+        topology->audio_version = version;
+        break;
+      case 2:
+        topology->audio_ble_version = version;
+        break;
+      case 3:
+        topology->video_version = version;
+        break;
+      case 4:
+        topology->video_eeprom_version = version.erase(1, 2);
+        break;
+      case 5:
+        topology->video_ble_version = version.erase(1, 2);
+        break;
+    }
+  }
+  index += sizeof(DeviceInfo);
+  if (index >= data.size())
+    return kLogiErrorInvalidResultData;
+  topology->left_speaker_connected = data[index];
+  index += 1;
+  if (index >= data.size())
+    return kLogiErrorInvalidResultData;
+  topology->right_speaker_connected = data[index];
   return kLogiErrorNoError;
 }
 

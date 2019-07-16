@@ -9,6 +9,8 @@
 #include <map>
 #include <memory>
 #include "usb_device.h"
+#include "audio_device.h"
+#include "tablehub_device.h"
 
 /**
  * Composite device class to hold and handle firmware update of component usb
@@ -21,7 +23,7 @@ class CompositeDevice {
  private:
   std::vector<std::shared_ptr<USBDevice>> devices_;
 
-  // Store the image buffers in this map as follow:
+  // Stores the image buffers in this map as follow:
   // {
   //   kLogiDeviceVideo   : video-image-buffer,
   //   kLogiDeviceEeprom  : eeprom-image-buffer,
@@ -52,19 +54,19 @@ class CompositeDevice {
   virtual ~CompositeDevice();
 
   /**
-   * @brief Open all component devices.
+   * @brief Opens all component devices.
    * @return kLogiErrorNoError if successfully opened or error code if one of
    * the components fails to open.
    */
   int OpenDevices();
 
   /**
-   * @brief Close all component devices.
+   * @brief Closes all component devices.
    */
   void CloseDevices();
 
   /**
-   * @brief Get version number of each component in the composite device.
+   * @brief Gets version number of each component in the composite device.
    * @param version_map Output version map containing all component versions of
    * the composite device. Version map is formatted as follow:
    * {
@@ -75,15 +77,30 @@ class CompositeDevice {
    * @return kLogiErrorNoError if succeeded or error code if fails to get
    * one of the component versions.
    */
-  int GetDevicesVersion(std::map<int, std::string>* version_map);
+  int GetDevicesVersion(std::map<int, std::string>& version_map);
 
   /**
-   * @brief Get name of each component in the composite device.
+   * @brief Queries the HID on the audio device to get the topology for the
+   * system, which consists of the firmware versions for all components.
+   * @param version_map Output version map containing all component versions of
+   * the composite device. Version map is formatted as follow:
+   * {
+   *    kLogiDeviceVideo  : "video-version",
+   *    kLogiDeviceEeprom : "eeprom-version",
+   *    kLogiDeviceMcu2   : "mcu2-version",
+   * }
+   * @return kLogiErrorNoError if succeeded or error code if fails to get
+   * one of the component versions.
+   */
+  int GetDevicesVersionFromAudio(std::map<int, std::string>& version_map);
+
+  /**
+   * @brief Gets name of each component in the composite device.
    * @param name Output device name.
    * @return kLogiErrorNoError if succeeded or error code if failed to get one
    * of the component versions.
    */
-  int GetDeviceName(std::string* name);
+  int GetDeviceName(std::string& name);
 
   /**
    * @brief Verify and get version number of each image buffers.
@@ -97,10 +114,27 @@ class CompositeDevice {
    * @return kLogiErrorNoError if succeeded or error code if fails to verify or
    * get version.
    */
-  int GetImagesVersion(std::map<int, std::string>* version_map);
+  int GetImagesVersion(std::map<int, std::string>& version_map);
+
+   /**
+   * @brief Sets image buffer. It does not retain or copy the buffer. It
+   * @brief Set image buffer. It does not retain or copy the buffer. It
+   * @brief Grabs the firmware image's component firmware versions.
+   * @param version_map Output version map containing all component versions of
+   * the composite device. Version map is formatted as follow:
+   * {
+   *    kLogiDeviceVideo  : "video-version",
+   *    kLogiDeviceEeprom : "eeprom-version",
+   *    kLogiDeviceMcu2   : "mcu2-version",
+   * }
+   * @return kLogiErrorNoError if succeeded or error code if fails to get
+   * one of the component versions.
+   */
+  int GetImagesVersionFromFile(std::map<int, std::string>& version_map);
+
 
   /**
-   * @brief Set image buffer. It does not retain or copy the buffer. It
+   * @brief Sets image buffer. It does not retain or copy the buffer. It
    * replaces the old buffer if it's already existed in the map.
    * @param device_type The device type of the image. Use kLogiDeviceVideo,
    * kLogiDeviceEeprom... for this type.
@@ -187,7 +221,7 @@ class CompositeDevice {
    * @param logicool True firmware is Logicool.
    * @return kLogiErrorNoError if checked ok, error code otherwise.
    */
-  int IsLogicool(bool check_video, bool check_audio, bool* logicool);
+  int IsLogicool(bool check_video, bool check_audio, bool& logicool);
 
   /**
    * @brief Writes Logicool/tech info to EEPROM.
@@ -205,7 +239,7 @@ class CompositeDevice {
    * @param logicool True if Logicool brand.
    * @return kLogiErrorNoError if read ok, error code otherwise.
    */
-  int ReadBrandInfoFromEeprom(bool* logicool);
+  int ReadBrandInfoFromEeprom(bool& logicool);
 
   /**
    * @brief Performs audio firmware update when the device is in the DFU mode.
@@ -221,5 +255,30 @@ class CompositeDevice {
    * @return kLogiErrorNoError if no error, error code otherwise.
    */
   int ResetUsbHub(std::string vid, std::string pid);
+
+  /**
+   * @brief Updates the firmware for the entire system.
+   * @return kLogiErrorNoError if no error, error code otherwise.
+   */
+  int PerformSystemUpdate();
+
+  /**
+   * @brief Tracks the indivdual update progress of components in the system.
+   * @param audio The audio device.
+   * @param tablehub The tablehub device.
+   * @param topology System components' information.
+   * @return kLogiErrorNoError if no error, error code otherwise.
+   */
+  int CheckComponentsUpdated(const std::shared_ptr<AudioDevice>& audio,
+                             const std::shared_ptr<TableHubDevice>& tablehub,
+                             SystemTopology& topology);
+
+  /**
+   * @brief Grabs the number of components that are comprised in the system.
+   * @param count Number of components.
+   * @param topology System components' information.
+   * @return kLogiErrorNoError if no error, error code otherwise.
+   */
+  int GetComponentCount(int& count, const SystemTopology& topology);
 };
 #endif /* SRC_COMPOSITE_DEVICE_H_ */

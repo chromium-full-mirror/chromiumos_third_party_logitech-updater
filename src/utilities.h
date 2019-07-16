@@ -16,6 +16,8 @@ const char kLogiGuidTestDebug[] = "1f5d4ca9-de11-4487-840d-50933c8ec8d1";
 const char kLogiGuidPeripheralControl[] =
     "ffe52d21-8030-4e2c-82d9-f587d00540bd";
 const char kLogiVendorIdString[] = "0x046D";
+constexpr int kLogiPollingSleep = 20000;
+constexpr int kLogiPollingMaxTimeout = 90;
 
 /**
  * @brief Gets contents of the directory.
@@ -56,6 +58,15 @@ bool ConvertHexStringToInt(std::string hex_string, int* output_value);
  * @return false if convert failed, true otherwise.
  */
 bool ConvertHexCharToUnsignedInt(const char c, uint8_t* output_value);
+
+/**
+ * @brief Converts int representation of device's version
+ * to string representation.
+ * @param num The int to be converted.
+ * @param version_str Output string value.
+ * @return false if convert failed, true otherwise.
+ */
+bool GetDeviceVersionFromInt(int num, std::string* version_str);
 
 /**
  * @brief Gets the device string version.

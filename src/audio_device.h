@@ -8,6 +8,31 @@
 #include <stdio.h>
 #include "usb_device.h"
 
+struct DeviceInfo {
+  uint8_t id;         // Tablehub:0x10, Micpods:0x21~0x27, Splitters:0x31~0x37
+  uint8_t father_id;  // The previous device ID
+  uint8_t slot_idx;   // The connector index of father device, 0:father device
+                      // is Micpod, 0~2:father device is splitter
+  uint8_t update_status;  // MSB 1 indicating updating, rest bits for percentage
+  uint8_t ver_major;      // Major number of version
+  uint8_t ver_minor;      // Minor number of version
+  uint16_t ver_build;     // Build number of version
+  uint32_t fpga_version;
+};
+
+struct SystemTopology {
+  DeviceInfo tablehub;              // info pertaining to tablehub device
+  std::vector<DeviceInfo> micpods;  // info pertaining to all micpods in system
+  std::vector<DeviceInfo> splitters;  // splitters info in system
+  std::string audio_version;          // audio firmware version
+  std::string audio_ble_version;      // audio ble firmware version
+  std::string video_version;          // video firmware version
+  std::string video_eeprom_version;   // eeprom firmware version
+  std::string video_ble_version;      // video ble firmware version
+  uint8_t left_speaker_connected;     // bit to show left speaker connected
+  uint8_t right_speaker_connected;    // bit to show right speaker connected
+};
+
 const char kDefaultAudioDeviceMountPoint[] = "/sys/class/hidraw";
 const char kDefaultAudioDevicePoint[] = "/device/../..";
 // HID report number to set device into info querying mode.
@@ -15,6 +40,12 @@ constexpr int kLogiReportNumberSetInfo = 0x1B;
 // HID report number to get info.
 constexpr int kLogiReportNumberGetInfo = 0x19;
 
+// ID values for DeviceInfo struct.
+constexpr uint8_t kLogiTableHubId = 0x10;
+constexpr uint8_t kLogiMicpodIdStart = 0x21;
+constexpr uint8_t kLogiMicpodIdEnd = 0x27;
+constexpr uint8_t kLogiSplitterIdStart = 0x31;
+constexpr uint8_t kLogiSplitterIdEnd = 0x37;
 /**
  * Logitech audio device class to handle audio firmware update. These are the
  * steps performed by this updater:
@@ -90,6 +121,15 @@ class AudioDevice : public USBDevice {
    * @return kLogiErrorNoError if prepared ok, error code otherwise.
    */
   int PrepareForUpdate(std::vector<uint8_t> buffer, bool* should_update);
+
+  /**
+   * @brief Reads the topology of the system. Grabs information such as which
+   * device components connected to the system, firmware version(s) for each
+   * device component, and update progress.
+   * @param topology The system's topology.
+   * @return kLogiErrorNoError if read topology correctly, error code otherwise.
+   */
+  int ReadSystemTopology(SystemTopology* topology);
 
  protected:
   /**

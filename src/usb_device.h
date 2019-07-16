@@ -21,6 +21,8 @@ enum {
   kLogiErrorOpenDeviceFailed,  // Device present but failed to open.
   kLogiErrorDeviceRebootFailed,
   kLogiErrorInvalidDeviceVersionDataSize,
+  kLogiErrorInvalidDeviceVersionString,
+  kLogiErrorInvalidResultData,
   kLogiErrorDeviceNameNotAvailable,
   kLogiErrorGetDfuApiVersionFailed,
   kLogiErrorSetDeviceToDfuModeFailed,
@@ -28,6 +30,7 @@ enum {
   kLogiErrorWaitForHidDeviceReopenFailed,
   kLogiErrorBrandCheckFailed,
   kLogiErrorBrandMismatched,
+  kLogiErrorClaimInterfaceFailed,
   // Binary image errors.
   kLogiErrorImageBufferReadFailed,
   kLogiErrorImageVersionNotFound,
@@ -39,6 +42,7 @@ enum {
   kLogiErrorReadS19ImageByteFailed,
   kLogiErrorSendImageFailed,
   kLogiErrorVerifyUpdatedImageFailed,
+  kLogiErrorVerifyImageVersionFailed,
   // I/O operation errors.
   kLogiErrorXuUnitIdInvalid,
   kLogiErrorVideoDeviceAitInitiateGetDataFailed,
@@ -47,7 +51,8 @@ enum {
   // Sig validation errors.
   kLogiErrorSignatureValidationFailed,
   kLogiErrorInvalidBleNameSize,
-  kLogiErrorUnknown
+  kLogiErrorUnknown,
+  kLogiErrorTimeout
 };
 
 enum {
@@ -58,6 +63,10 @@ enum {
   kLogiDeviceAudio,
   kLogiDeviceCodec,
   kLogiDeviceBle,  // Bluetooth Low Energy device.
+  kLogiDeviceVideoBle,
+  kLogiDeviceTableHub,
+  kLogiDeviceMicPod,
+  kLogiDeviceSplitter,
 };
 
 /**

@@ -9,6 +9,9 @@
 #include "usb_device.h"
 
 constexpr unsigned char kLogiAitSetMmpCmdFwBurning = 0x01;
+const std::string kLogiDefaultRallyVideoVersion = "9.0.0";
+const std::string kLogiDefaultRallyEepromVersion = "9.0";
+const std::string kLogiDefaultRallyVideoBleVersion = "9.0";
 
 /**
  * Logitech video device class to handle video firmware update.

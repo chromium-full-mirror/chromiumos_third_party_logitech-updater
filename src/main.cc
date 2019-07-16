@@ -6,9 +6,16 @@
 #include <brillo/flag_helper.h>
 #include <brillo/syslog_logging.h>
 #include <iostream>
+#include <string>
+#include <sys/ioctl.h>
+#include <linux/usbdevice_fs.h>
+#include <fcntl.h>
+#include <linux/hidraw.h>
+#include <sys/socket.h>
 #include "base/files/file.h"
 #include "composite_device.h"
 #include "utilities.h"
+#include "audio_device.h"
 #include "version.h"
 
 namespace {
@@ -23,12 +30,19 @@ const char kLogiMeetUpVideoPid[] = "0x0866";
 // PTZ Pro pid
 const char kLogiPtzProVideoPid[] = "0x0853";
 
+// Rally pid
+const char kLogiRallyTableHubPid[] = "0x088f";
+const char kLogiRallyVideoPid[] = "0x0881";
+const char kLogiRallyAudioPid[] = "0x0885";
+const char kLogiRallyAudioDfuPid[] = "0x0886";
+
 // These device names are used where real device name cannot be queried from
 // the device, for example, querying image info, checking if device is present,
 // etc...
 const char kLogiPtzPro2Name[] = "PTZ Pro 2";
 const char kLogiMeetUpName[] = "MeetUp";
 const char kLogiPtzProName[] = "PTZ Pro";
+const char kLogiRallyName[] = "Rally";
 
 // PTZ Pro 2 binary image paths.
 const char kLogiPtzPro2VideoImagePath[] =
@@ -60,6 +74,12 @@ const char kLogiPtzProVideoImagePath[] =
 const char kLogiPtzProEepromImagePath[] =
     "/lib/firmware/logitech/ptzpro/ptzpro_eeprom.s19";
 
+// Rally binaries image path.
+const char kLogiRallyImagePath[] = "/lib/firmware/logitech/rally/tablehub.bin";
+// Rally binary versions path.
+const char kLogiRallyVersionsPath[] =
+    "/lib/firmware/logitech/rally/versions.bin";
+
 /**
  * @brief Prints version info from info map.
  * @param info_map The map containing versions.
@@ -77,6 +97,17 @@ void PrintVersions(std::map<int, std::string> info_map) {
     LOG(INFO) << "Codec version:  " << info_map[kLogiDeviceCodec].c_str();
   if (info_map.find(kLogiDeviceBle) != info_map.end())
     LOG(INFO) << "BLE version:    " << info_map[kLogiDeviceBle].c_str();
+  if (info_map.find(kLogiDeviceVideoBle) != info_map.end())
+    LOG(INFO) << "Video BLE version:   "
+              << info_map[kLogiDeviceVideoBle].c_str();
+  if (info_map.find(kLogiDeviceTableHub) != info_map.end())
+    LOG(INFO) << "Table Hub version:   "
+              << info_map[kLogiDeviceTableHub].c_str();
+  if (info_map.find(kLogiDeviceMicPod) != info_map.end())
+    LOG(INFO) << "Mic Pod version:     " << info_map[kLogiDeviceMicPod].c_str();
+  if (info_map.find(kLogiDeviceSplitter) != info_map.end())
+    LOG(INFO) << "Mic Pod Hub version: "
+              << info_map[kLogiDeviceSplitter].c_str();
   std::cout << std::endl;
 }
 
@@ -89,9 +120,15 @@ void CheckDeviceVersion(std::shared_ptr<CompositeDevice> device) {
     return;
 
   std::string name;
-  device->GetDeviceName(&name);
+  device->GetDeviceName(name);
   std::map<int, std::string> info_map;
-  int error = device->GetDevicesVersion(&info_map);
+  int error;
+  if (name.find(kLogiRallyName) != std::string::npos) {
+    error = device->GetDevicesVersionFromAudio(info_map);
+    name = name.substr(0, 10);
+  } else {
+    error = device->GetDevicesVersion(info_map);
+  }
   if (error) {
     LOG(ERROR) << "Failed to read " << name.c_str() << " versions.";
   } else {
@@ -108,7 +145,12 @@ void CheckDeviceVersion(std::shared_ptr<CompositeDevice> device) {
 void CheckImageVersion(std::shared_ptr<CompositeDevice> device,
                        const char* image_name) {
   std::map<int, std::string> info_map;
-  int error = device->GetImagesVersion(&info_map);
+  int error;
+  if (strcmp(image_name, kLogiRallyName) == 0) {
+    error = device->GetImagesVersionFromFile(info_map);
+  } else {
+    error = device->GetImagesVersion(info_map);
+  }
   if (error) {
     LOG(ERROR) << "Failed to read " << image_name << " image versions.";
   } else {
@@ -206,7 +248,7 @@ int ApplyMeetUpFirmware(std::shared_ptr<CompositeDevice> device,
 
   bool logicool = false;
   if (device->IsDevicePresent()) {
-    int error = device->IsLogicool(true, false, &logicool);
+    int error = device->IsLogicool(true, false, logicool);
     if (error)
       return error;
   }
@@ -253,6 +295,32 @@ int ApplyPTZProFirmware(std::shared_ptr<CompositeDevice> device,
                          ReadBinaryFileContent(kLogiPtzProVideoImagePath));
   device->SetImageBuffer(kLogiDeviceEeprom,
                          ReadBinaryFileContent(kLogiPtzProEepromImagePath));
+  return kLogiErrorNoError;
+}
+
+/**
+ * @brief Applies Rally firmwares.
+ * @param device Rally composite device.
+ */
+int ApplyRallyFirmware(std::shared_ptr<CompositeDevice> device, bool test_sig) {
+  bool validated = ValidateSignature(test_sig, kLogiRallyImagePath);
+  if (!validated) {
+    LOG(ERROR) << "Failed to validate " << kLogiRallyName
+               << " firmware signature.";
+    return kLogiErrorSignatureValidationFailed;
+  }
+  validated = ValidateSignature(test_sig, kLogiRallyVersionsPath);
+  if (!validated) {
+    LOG(ERROR) << "Failed to validate " << kLogiRallyName
+               << " firmware versions signature.";
+    return kLogiErrorSignatureValidationFailed;
+  }
+  device->SetImageBuffer(kLogiDeviceTableHub,
+                         ReadBinaryFileContent(kLogiRallyImagePath));
+  device->SetImageBuffer(kLogiDeviceAudio,
+                         ReadBinaryFileContent(kLogiRallyImagePath));
+  device->SetImageBuffer(kLogiDeviceVideo,
+                         ReadBinaryFileContent(kLogiRallyImagePath));
   return kLogiErrorNoError;
 }
 
@@ -365,6 +433,16 @@ int main(int argc, char** argv) {
   ptzpro_device->AddDevice(kLogiDeviceVideo, kLogiPtzProVideoPid);
   ptzpro_device->AddDevice(kLogiDeviceEeprom, kLogiPtzProVideoPid);
   ApplyPTZProFirmware(ptzpro_device, FLAGS_test_sig);
+  // Rally system.
+  std::shared_ptr<CompositeDevice> rally_system =
+      std::make_shared<CompositeDevice>();
+  rally_system->AddDevice(kLogiDeviceAudio, kLogiRallyAudioPid,
+                          kLogiRallyAudioDfuPid);
+  rally_system->AddDevice(kLogiDeviceVideo, kLogiRallyVideoPid);
+  rally_system->AddDevice(kLogiDeviceTableHub, kLogiRallyTableHubPid);
+  ApplyRallyFirmware(rally_system, FLAGS_test_sig);
+  if (!rally_system->AreImagesPresent())
+    LOG(ERROR) << kLogiRallyName << " image not found.";
 
   if (FLAGS_binary_version)
     std::cout << kLogiBinaryVersion << std::endl;
@@ -373,6 +451,7 @@ int main(int argc, char** argv) {
     CheckDeviceVersion(ptzpro2_device);
     CheckDeviceVersion(meetup_device);
     CheckDeviceVersion(ptzpro_device);
+    CheckDeviceVersion(rally_system);
   }
 
   if (FLAGS_image_version) {
@@ -384,11 +463,15 @@ int main(int argc, char** argv) {
 
     ApplyPTZProFirmware(ptzpro_device, FLAGS_test_sig);
     CheckImageVersion(ptzpro_device, kLogiPtzProName);
+
+    ApplyRallyFirmware(rally_system, FLAGS_test_sig);
+    CheckImageVersion(rally_system, kLogiRallyName);
   }
 
   ptzpro2_device->SetForceUpdate(FLAGS_force);
   meetup_device->SetForceUpdate(FLAGS_force);
   ptzpro_device->SetForceUpdate(FLAGS_force);
+  rally_system->SetForceUpdate(FLAGS_force);
 
   if (FLAGS_update_components || FLAGS_update_dfu_audio) {
     if (FLAGS_update_components && ptzpro2_device->IsDevicePresent()) {
@@ -412,6 +495,12 @@ int main(int argc, char** argv) {
           error = meetup_device->PerformDfuAudioUpdate();
       }
     }
+    if (rally_system->IsDevicePresent(kLogiDeviceTableHub)) {
+      error = ApplyRallyFirmware(rally_system, FLAGS_test_sig);
+      if (!error)
+        error = rally_system->PerformSystemUpdate();
+    }
   }
+  LOG(INFO) << "Exiting updater with code: " << error;
   return error;
 }

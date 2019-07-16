@@ -6,8 +6,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <sys/stat.h>
 #include "base/files/dir_reader_posix.h"
 #include "base/files/file.h"
 #include "base/files/file_path.h"
@@ -25,6 +27,8 @@ constexpr unsigned int kLogiUnitIdCameraVersion = 8;
 constexpr unsigned int kLogiUnitIdAccessMmp = 6;
 constexpr unsigned int kLogiUnitIdTestDebug = 9;
 constexpr unsigned int kLogiUnitIdPeripheralControl = 11;
+constexpr int kVersionStringMinMajorMinorLength = 2;
+constexpr int kVersionStringMinMajorMinorBuildLength = 3;
 
 const char kLogitechLockFile[] = "/tmp/logitech-updater.lock";
 
@@ -97,6 +101,52 @@ std::string GetDeviceStringVersion(int major, int minor) {
   std::stringstream string_stream;
   string_stream << major << "." << minor;
   return string_stream.str();
+}
+
+std::string GetDeviceStringVersion(uint8_t major,
+                                   uint8_t minor,
+                                   uint8_t build) {
+  std::string major_str = base::IntToString(major);
+  std::string minor_str = base::IntToString(minor);
+  std::string build_str = base::IntToString(build);
+  std::stringstream str_stream;
+  str_stream << major_str << "." << minor_str << "." << build_str;
+  return str_stream.str();
+}
+
+bool GetDeviceVersionFromInt(int num, std::string* version_str) {
+  if (num < 0)
+    return false;
+  std::string num_string = std::to_string(num);
+  if (num_string.length() <= 0)
+    return false;
+  std::string major_string = num_string.substr(0, 1);
+  int major;
+  if (!base::StringToInt(major_string, &major)) {
+    return false;
+  }
+
+  std::string minor_string = "0";
+  if (num_string.length() >= kVersionStringMinMajorMinorLength) {
+    minor_string = num_string.substr(1, 1);
+  }
+  int minor;
+  if (!base::StringToInt(minor_string, &minor)) {
+    return false;
+  }
+
+  std::string build_string = "0";
+  if (num_string.length() >= kVersionStringMinMajorMinorBuildLength) {
+    build_string = num_string.substr(2);
+  }
+  int build;
+  if (!base::StringToInt(build_string, &build)) {
+    return false;
+  }
+  std::string major2;
+  *version_str = base::IntToString(major) + "." + base::IntToString(minor) +
+                 "." + base::IntToString(build);
+  return true;
 }
 
 bool GetDeviceVersionNumber(std::string version,

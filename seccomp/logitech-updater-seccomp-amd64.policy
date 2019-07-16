@@ -4,18 +4,23 @@
 
 access: 1
 arch_prctl: 1
+bind: 1
 brk: 1
+clone: 1
 close: 1
 connect: 1
 execve: 1
 exit_group: 1
-# fcntl: arg1 == F_SETLK
-fcntl: arg1 == 6
+# fcntl: arg1 == F_SETLK || arg1 == F_GETFD || arg1 == F_GETFL || arg1 == F_SETFL
+fcntl: arg1 == 6 || arg1 == 1 || arg1 == 3 || arg1 == 4
 fstat: 1
 futex: 1
 getdents: 1
 getdents64: 1
 getpid: 1
+getrandom: 1
+getsockname: 1
+gettid: 1
 getrlimit: 1
 # ioctl: arg1 == TCGETS || arg1 == UVCIOC_CTRL_QUERY ||
 #        arg1 == VIDIOC_QUERYCAP || arg1 == HIDIOCSFEATURE(5) ||
@@ -24,9 +29,15 @@ getrlimit: 1
 #        arg1 == HIDIOCGFEATURE(40) ||arg1 == HIDIOCSFEATURE(64) ||
 #        arg1 == HIDIOCGFEATURE(64) || arg1 == HIDIOCSFEATURE(66) ||
 #        arg1 == HIDIOCGFEATURE(66) || arg1 == HIDIOCSFEATURE(141) ||
-#        arg1 == HIDIOCGFEATURE(141) || arg1 == USBDEVFS_RESET
-ioctl: arg1 == 0x5401 || arg1 == 0xC0107521 || arg1 == 0x80685600 || arg1 == 0xC0054806 || arg1 == 0xC0054807 || arg1 == 0xC0064806 || arg1 == 0xC0064807 || arg1 == 0xC0284806 || arg1 == 0xC0284807 || arg1 == 0xC0404806 || arg1 == 0xC0404807 || arg1 == 0xC0424806 || arg1 == 0xC0424807 || arg1 == 0xC08D4806 || arg1 == 0xC08D4807 || arg1 == 0x5514
+#        arg1 == HIDIOCGFEATURE(141) || arg1 == USBDEVFS_RESET ||
+#        arg1 == HIDIOCSFEATURE(48) || arg1 == HIDIOCGFEATURE(65) ||
+#        arg1 == USBDEVFS_GET_CAPABILITIES || arg1 == USBDEVFS_CLAIMINTERFACE ||
+#        arg1 == USBDEVFS_REAPURBNDELAY || arg1 == USBDEVFS_SUBMITURB ||
+#        arg1 == USBDEVFS_RELEASEINTERFACE || arg1 == HIDIOCGFEATURE(513) ||
+#        arg1 == USBDEVFS_DISCARDURB
+ioctl: arg1 == 0x5401 || arg1 == 0xC0107521 || arg1 == 0x80685600 || arg1 == 0xC0054806 || arg1 == 0xC0054807 || arg1 == 0xC0064806 || arg1 == 0xC0064807 || arg1 == 0xC0284806 || arg1 == 0xC0284807 || arg1 == 0xC0404806 || arg1 == 0xC0404807 || arg1 == 0xC0424806 || arg1 == 0xC0424807 || arg1 == 0xC08D4806 || arg1 == 0xC08D4807 || arg1 == 0x5514 || arg1 == 0xC0304806 || arg1 == 0xC0414807 || arg1 == 0x8004551a || arg1 == 0x8004550f || arg1 == 0x4008550d || arg1 == 0x8038550a || arg1 == 0x80045510 || arg1 == 0xc2014807 || arg1 == 0x550b
 lseek: 1
+lstat:1
 mmap: 1
 mprotect: 1
 munmap: 1
@@ -34,14 +45,23 @@ nanosleep: 1
 open: 1
 openat: 1
 prlimit64: arg2 == 0 && arg3 != 0
+pipe: 1
+pipe2: 1
+poll: 1
 read: 1
 readlink: 1
+readlinkat: 1
+recvmsg: 1
 rt_sigaction: 1
 rt_sigprocmask: 1
 sendto: 1
+setsockopt: 1
 set_robust_list: 1
 set_tid_address: 1
-# socket: arg0 == PFLOCAL
-socket: arg0 == 1
+# socket: arg0 == PFLOCAL || arg0 == AF_UNIX || arg0 == AF_NETLINK
+socket: arg0 == 1 || arg0 == 10 || arg0 == 16
 stat: 1
+timerfd_create: 1
+timerfd_settime: 1
+uname: 1
 write: 1

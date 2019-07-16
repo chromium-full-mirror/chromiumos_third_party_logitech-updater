@@ -9,6 +9,12 @@
 #include <base/logging.h>
 #include <brillo/syslog_logging.h>
 #include <unistd.h>
+#include <libusb.h>
+#include <thread>
+#include <chrono>
+#include <iostream>
+#include <iomanip>
+#include "base/strings/string_number_conversions.h"
 #include "eeprom_device.h"
 #include "mcu2_device.h"
 #include "utilities.h"
@@ -16,6 +22,8 @@
 #include "audio_device.h"
 #include "ble_device.h"
 #include "codec_device.h"
+#include "tablehub_device.h"
+#include "usb_device.h"
 
 CompositeDevice::CompositeDevice() {}
 
@@ -48,7 +56,7 @@ void CompositeDevice::CloseDevices() {
 }
 
 int CompositeDevice::GetDevicesVersion(
-    std::map<int, std::string>* version_map) {
+    std::map<int, std::string>& version_map) {
   std::map<int, std::string> output;
   int error = kLogiErrorNoError;
   for (auto device : devices_) {
@@ -58,23 +66,89 @@ int CompositeDevice::GetDevicesVersion(
     device->CloseDevice();
     if (error)
       return error;
-    (*version_map)[device->device_type_] = version;
+    version_map[device->device_type_] = version;
   }
   return error;
 }
 
-int CompositeDevice::GetDeviceName(std::string* name) {
+int CompositeDevice::GetDevicesVersionFromAudio(
+    std::map<int, std::string>& version_map) {
+  int error = kLogiErrorNoError;
+  std::shared_ptr<AudioDevice> audio_device =
+      std::static_pointer_cast<AudioDevice>(
+          GetDeviceFromType(kLogiDeviceAudio));
+  audio_device->OpenDevice();
+  SystemTopology topology;
+  error = audio_device->ReadSystemTopology(&topology);
+  if (error)
+    return error;
+  std::string device_version =
+      base::IntToString(topology.tablehub.ver_major) + "." +
+      base::IntToString(topology.tablehub.ver_minor) + "." +
+      base::IntToString(topology.tablehub.ver_build);
+  version_map[kLogiDeviceTableHub] = device_version;
+  if (topology.micpods.size() > 0) {
+    device_version = base::IntToString(topology.micpods[0].ver_major) + "." +
+                     base::IntToString(topology.micpods[0].ver_minor) + "." +
+                     base::IntToString(topology.micpods[0].ver_build);
+    version_map[kLogiDeviceMicPod] = device_version;
+  }
+  if (topology.splitters.size() > 0) {
+    device_version = base::IntToString(topology.splitters[0].ver_major) + "." +
+                     base::IntToString(topology.splitters[0].ver_minor) + "." +
+                     base::IntToString(topology.splitters[0].ver_build);
+    version_map[kLogiDeviceSplitter] = device_version;
+  }
+  version_map[kLogiDeviceVideo] = topology.video_version;
+  version_map[kLogiDeviceEeprom] = topology.video_eeprom_version;
+  version_map[kLogiDeviceAudio] = topology.audio_version;
+  version_map[kLogiDeviceBle] = topology.audio_ble_version;
+  version_map[kLogiDeviceVideoBle] = topology.video_ble_version;
+  return error;
+}
+
+int CompositeDevice::GetDeviceName(std::string& name) {
   // Device name is stored on video device.
   std::shared_ptr<USBDevice> device = GetDeviceFromType(kLogiDeviceVideo);
   if (device == nullptr)
     return kLogiErrorDeviceNotPresent;
   device->OpenDevice();
-  int error = device->GetDeviceName(name);
+  int error = device->GetDeviceName(&name);
   device->CloseDevice();
   return error;
 }
 
-int CompositeDevice::GetImagesVersion(std::map<int, std::string>* version_map) {
+int CompositeDevice::GetImagesVersionFromFile(
+    std::map<int, std::string>& version_map) {
+  int error = kLogiErrorNoError;
+  std::shared_ptr<TableHubDevice> tablehub_device =
+      std::static_pointer_cast<TableHubDevice>(
+          GetDeviceFromType(kLogiDeviceTableHub));
+  std::map<std::string, std::string> image_version_map;
+  error = tablehub_device->GetAllComponentImageVersions(&image_version_map);
+  if (error) {
+    return error;
+  }
+  for (const auto pair : image_version_map) {
+    if (pair.first == kVideoSearchString)
+      version_map[kLogiDeviceVideo] = pair.second;
+    else if (pair.first == kAudioSearchString)
+      version_map[kLogiDeviceAudio] = pair.second;
+    else if (pair.first == kAudioBleSearchString)
+      version_map[kLogiDeviceBle] = pair.second;
+    else if (pair.first == kEepromSearchString)
+      version_map[kLogiDeviceEeprom] = pair.second;
+    else if (pair.first == kTableHubSearchString)
+      version_map[kLogiDeviceTableHub] = pair.second;
+    else if (pair.first == kMicPodSearchString)
+      version_map[kLogiDeviceMicPod] = pair.second;
+    else if (pair.first == kSplitterSearchString)
+      version_map[kLogiDeviceSplitter] = pair.second;
+  }
+  return error;
+}
+
+int CompositeDevice::GetImagesVersion(std::map<int, std::string>& version_map) {
   int error = kLogiErrorNoError;
   std::string version;
 
@@ -86,7 +160,7 @@ int CompositeDevice::GetImagesVersion(std::map<int, std::string>* version_map) {
       return error;
     if ((error = device->GetImageVersion(buffer, &version)))
       return error;
-    (*version_map)[device->device_type_] = version;
+    version_map[device->device_type_] = version;
   }
   return error;
 }
@@ -156,7 +230,7 @@ int CompositeDevice::PerformComponentUpdate() {
                             kLogiDeviceVideo, kLogiDeviceBle, kLogiDeviceCodec};
   bool did_video_update = false;
   std::string name;
-  GetDeviceName(&name);
+  GetDeviceName(name);
   LOG(INFO) << "Checking " << name << " firmwares...";
   int error = kLogiErrorNoError;
 
@@ -234,6 +308,9 @@ void CompositeDevice::AddDevice(int device_type,
     case kLogiDeviceBle:
       devices_.push_back(std::make_shared<BleDevice>(pid));
       break;
+    case kLogiDeviceTableHub:
+      devices_.push_back(std::make_shared<TableHubDevice>(pid));
+      break;
     default:
       break;
   }
@@ -256,7 +333,7 @@ void CompositeDevice::SetSupportBle(bool support_ble) {
 
 int CompositeDevice::IsLogicool(bool check_video,
                                 bool check_audio,
-                                bool* logicool) {
+                                bool& logicool) {
   bool video_present = IsDevicePresent(kLogiDeviceVideo);
   bool audio_present = IsDevicePresent(kLogiDeviceAudio);
   if (!video_present && !audio_present) {
@@ -283,7 +360,7 @@ int CompositeDevice::IsLogicool(bool check_video,
     if (error)
       return error;
     if (!check_audio) {
-      *logicool = video_cool;
+      logicool = video_cool;
       return kLogiErrorNoError;
     }
   }
@@ -301,7 +378,7 @@ int CompositeDevice::IsLogicool(bool check_video,
     if (error)
       return error;
     if (!check_video) {
-      *logicool = audio_cool;
+      logicool = audio_cool;
       return kLogiErrorNoError;
     }
   }
@@ -309,7 +386,7 @@ int CompositeDevice::IsLogicool(bool check_video,
   // Checks both video and audio Logicool firmware for mismatched brand.
   if (video_cool != audio_cool)
     return kLogiErrorBrandMismatched;
-  *logicool = video_cool;
+  logicool = video_cool;
   return error;
 }
 
@@ -326,7 +403,7 @@ int CompositeDevice::WriteBrandInfoToEeprom(bool logicool) {
   return error;
 }
 
-int CompositeDevice::ReadBrandInfoFromEeprom(bool* logicool) {
+int CompositeDevice::ReadBrandInfoFromEeprom(bool& logicool) {
   std::shared_ptr<EepromDevice> device = std::static_pointer_cast<EepromDevice>(
       GetDeviceFromType(kLogiDeviceEeprom));
   if (device == nullptr) {
@@ -334,7 +411,7 @@ int CompositeDevice::ReadBrandInfoFromEeprom(bool* logicool) {
     return kLogiErrorDeviceNotPresent;
   }
   device->OpenDevice();
-  int error = device->ReadBrandInfo(logicool);
+  int error = device->ReadBrandInfo(&logicool);
   device->CloseDevice();
   return error;
 }
@@ -347,7 +424,7 @@ int CompositeDevice::PerformDfuAudioUpdate() {
   if (audio_device == nullptr)
     return kLogiErrorDeviceNotPresent;
   std::string name;
-  GetDeviceName(&name);
+  GetDeviceName(name);
   LOG(INFO) << "Checking " << name << " audio firmware...";
   std::vector<uint8_t> buffer = image_buffers_[kLogiDeviceAudio];
   std::vector<uint8_t> header = secure_headers_[kLogiDeviceAudio];
@@ -381,4 +458,234 @@ int CompositeDevice::ResetUsbHub(std::string vid, std::string pid) {
       close(fd);
   }
   return error;
+}
+
+int CompositeDevice::PerformSystemUpdate() {
+  struct SystemTopology top;
+  int error = kLogiErrorNoError;
+  std::string name;
+  GetDeviceName(name);
+  LOG(INFO) << "Checking " << name.substr(0, 10) << " firmwares...";
+  std::shared_ptr<AudioDevice> audio_device =
+      std::static_pointer_cast<AudioDevice>(
+          GetDeviceFromType(kLogiDeviceAudio));
+  audio_device->OpenDevice();
+  struct SystemTopology topology;
+  error = audio_device->ReadSystemTopology(&topology);
+  if (error != kLogiErrorNoError) {
+    LOG(ERROR) << "Failed to grab Rally topology.";
+    audio_device->CloseDevice();
+    return error;
+  }
+  std::shared_ptr<TableHubDevice> tablehub_device =
+      std::static_pointer_cast<TableHubDevice>(
+          GetDeviceFromType(kLogiDeviceTableHub));
+  error = tablehub_device->OpenDevice();
+  if (error != 0) {
+    LOG(ERROR) << "Failed to open table hub device.";
+    return error;
+  }
+  // Have to set tablehub firmware version prior to performing update since
+  // version is queried from audio.
+  std::string version = GetDeviceStringVersion(topology.tablehub.ver_major,
+                                               topology.tablehub.ver_minor,
+                                               topology.tablehub.ver_build);
+  tablehub_device->SetDeviceVersion(version);
+  std::vector<uint8_t> buffer = image_buffers_[kLogiDeviceTableHub];
+  std::vector<uint8_t> header = secure_headers_[kLogiDeviceTableHub];
+  bool did_update;
+  error = tablehub_device->PerformUpdate(buffer, header, &did_update);
+  if (error) {
+    LOG(INFO) << "Failed to perform update.";
+    tablehub_device->CloseDevice();
+    audio_device->CloseDevice();
+    return error;
+  }
+  if (did_update) {
+    // Successfully sent image over to tablehub. Get progress.
+    error = tablehub_device->GetProgress();
+    if (error)
+      return error;
+    LOG(INFO) << "Updating system component firmwares...";
+    error = CheckComponentsUpdated(audio_device, tablehub_device, topology);
+    if (error)
+      LOG(ERROR) << "Failed to update Rally system. Error: " << error;
+    else
+      LOG(INFO) << "Successfully updated Rally system.";
+  }
+  audio_device->CloseDevice();
+  tablehub_device->CloseDevice();
+  return error;
+}
+
+int CompositeDevice::CheckComponentsUpdated(
+    const std::shared_ptr<AudioDevice>& audio,
+    const std::shared_ptr<TableHubDevice>& tablehub,
+    SystemTopology& topology) {
+  int error = kLogiErrorNoError;
+  int timeout = 0;
+  int count;
+  GetComponentCount(count, topology);
+  std::map<std::string, std::string> image_versions;
+  tablehub->GetAllComponentImageVersions(&image_versions);
+  bool tablehub_updated = false, micpods_updated = false,
+       splitters_updated = false, audio_updated = false,
+       audio_ble_updated = false, video_updated = false, eeprom_updated = false,
+       video_ble_updated = false;
+  std::string device_version;
+  std::string image_version;
+  do {
+    // Timeout (30 min) so that the application does not hang while polling.
+    if (timeout == kLogiPollingMaxTimeout) {
+      LOG(ERROR) << "Polling update progress timed out.";
+      return kLogiErrorTimeout;
+    }
+    memset(&topology, '\0', sizeof(SystemTopology));
+    if (!audio->IsPresent())
+      continue;
+    if (!audio->OpenDevice())
+      error = audio->ReadSystemTopology(&topology);
+    if (error) {
+      continue;
+    }
+    if (topology.tablehub.id != 0 && !tablehub_updated) {
+      device_version = GetDeviceStringVersion(topology.tablehub.ver_major,
+                                              topology.tablehub.ver_minor,
+                                              topology.tablehub.ver_build);
+      image_version = image_versions[kTableHubSearchString];
+      if (CompareVersions(device_version, image_version) == 0) {
+        if (timeout == 0)
+          LOG(INFO) << "Table hub firmware is up to date.";
+        else
+          LOG(INFO) << "Successfully updated table hub firmware.";
+        tablehub_updated = true;
+        count--;
+      }
+    }
+    if (topology.micpods.size() > 0 && !micpods_updated) {
+      micpods_updated = true;
+      for (auto micpod : topology.micpods) {
+        device_version = GetDeviceStringVersion(
+            micpod.ver_major, micpod.ver_minor, micpod.ver_build);
+        image_version = image_versions[kMicPodSearchString];
+        if (CompareVersions(device_version, image_version) != 0)
+          micpods_updated = false;
+      }
+      if (micpods_updated) {
+        if (timeout == 0)
+          LOG(INFO) << "Micpod firmware(s) up to date.";
+        else
+          LOG(INFO) << "Successfully updated micpod firmware(s).";
+        count -= topology.micpods.size();
+      }
+    }
+    if (topology.splitters.size() > 0 && !splitters_updated) {
+      splitters_updated = true;
+      for (auto splitter : topology.splitters) {
+        device_version = GetDeviceStringVersion(
+            splitter.ver_major, splitter.ver_minor, splitter.ver_build);
+        image_version = image_versions[kSplitterSearchString];
+        if (CompareVersions(device_version, image_version) != 0)
+          splitters_updated = false;
+      }
+      if (splitters_updated) {
+        if (timeout == 0)
+          LOG(INFO) << "Micpod hub firmware(s) up to date.";
+        else
+          LOG(INFO) << "Successfully updated splitter firmware(s).";
+        count -= topology.splitters.size();
+      }
+    }
+    if (topology.audio_version.length() != 0 && !audio_updated) {
+      device_version = topology.audio_version;
+      image_version = image_versions[kAudioSearchString];
+      if (CompareVersions(device_version, image_version) == 0) {
+        if (timeout == 0)
+          LOG(INFO) << "Audio firmware is up to date.";
+        else
+          LOG(INFO) << "Successfully updated audio firmware.";
+        audio_updated = true;
+        count--;
+      }
+    }
+    if (topology.audio_ble_version.length() != 0 && !audio_ble_updated) {
+      device_version = topology.audio_ble_version;
+      image_version = image_versions[kAudioBleSearchString];
+      if (CompareVersions(device_version, image_version) == 0) {
+        if (timeout == 0)
+          LOG(INFO) << "Audio ble firmware is up to date.";
+        else
+          LOG(INFO) << "Successfully updated audio ble firmware.";
+        audio_ble_updated = true;
+        count--;
+      }
+    }
+    if (topology.video_version.length() != 0 && !video_updated) {
+      device_version = topology.video_version;
+      image_version = image_versions[kVideoSearchString];
+      if (CompareVersions(device_version, image_version) == 0) {
+        if (timeout == 0)
+          LOG(INFO) << "Video firmware is up to date.";
+        else
+          LOG(INFO) << "Successfully updated video firmware.";
+        video_updated = true;
+        count--;
+      }
+    }
+    if (topology.video_eeprom_version.length() != 0 && !eeprom_updated) {
+      device_version = topology.video_eeprom_version;
+      image_version = image_versions[kEepromSearchString];
+      if (CompareVersions(device_version, image_version) == 0) {
+        if (timeout == 0)
+          LOG(INFO) << "Eeprom firmware is up to date.";
+        else
+          LOG(INFO) << "Successfully updated eeprom firmware.";
+        eeprom_updated = true;
+        count--;
+      }
+    }
+    if (topology.video_ble_version.length() != 0 && !video_ble_updated) {
+      device_version = topology.video_ble_version;
+      image_version = image_versions[kVideoBleSearchString];
+      if (CompareVersions(device_version, image_version) == 0) {
+        if (timeout == 0)
+          LOG(INFO) << "Video ble firmware is up to date.";
+        else
+          LOG(INFO) << "Successfully updated video ble firmware.";
+        video_ble_updated = true;
+        count--;
+      }
+    }
+    timeout++;
+    std::this_thread::sleep_for(std::chrono::milliseconds(kLogiPollingSleep));
+  } while (count > 0);
+  return kLogiErrorNoError;
+}
+
+int CompositeDevice::GetComponentCount(int& count,
+                                       const SystemTopology& topology) {
+  count = 0;
+  if (topology.tablehub.id == kLogiTableHubId)
+    count++;
+  if (topology.micpods.size() > 0)
+    count += topology.micpods.size();
+  if (topology.splitters.size() > 0)
+    count += topology.splitters.size();
+  if (topology.audio_version.length() != 0)
+    count++;
+  if (topology.audio_ble_version.length() != 0)
+    count++;
+  if (topology.video_version.length() != 0 &&
+      CompareVersions(topology.video_version,
+                      kLogiDefaultRallyVideoVersion) < 0)
+    count++;
+  if (topology.video_eeprom_version.length() != 0 &&
+      CompareVersions(topology.video_eeprom_version,
+                      kLogiDefaultRallyEepromVersion) < 0)
+    count++;
+  if (topology.video_ble_version.length() != 0 &&
+      CompareVersions(topology.video_ble_version,
+                      kLogiDefaultRallyVideoBleVersion) < 0)
+    count++;
+  return kLogiErrorNoError;
 }
