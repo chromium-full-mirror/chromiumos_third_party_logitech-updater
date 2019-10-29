@@ -17,6 +17,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
+#include "crypto/libcrypto-compat.h"
 #include <openssl/md5.h>
 #include <openssl/evp.h>
 
@@ -398,8 +399,7 @@ bool GenerateRSA(bool test_mode, RSA** out_rsa) {
   if (!exponent)
     return false;
 
-  (*out_rsa)->n = mod;
-  (*out_rsa)->e = exponent;
+  RSA_set0_key(*out_rsa, mod, exponent, NULL);
   return true;
 }
 
