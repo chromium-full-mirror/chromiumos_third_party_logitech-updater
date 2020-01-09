@@ -2,18 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "tablehub_device.h"
 #include <base/logging.h>
+#include <cfm/libdfu_notification/idfu_notification.h>
 #include <libusb.h>
 #include <stdio.h>
-#include <string>
-#include <iostream>
-#include <fstream>
-#include <thread>
 #include <chrono>
+#include <fstream>
+#include <iostream>
 #include <map>
-#include "tablehub_device.h"
-#include "utilities.h"
+#include <memory>
+#include <string>
+#include <thread>
 #include "base/strings/string_util.h"
+#include "utilities.h"
 
 // device endpoints for bulk interface
 constexpr int kEndpointOut = 0x01;
@@ -42,6 +44,8 @@ constexpr int kLibusbNoDeviceError = -4;
 constexpr int kLibusbTimeoutError = -7;
 constexpr int kTablehubRebootTimeoutInSec = 600;
 constexpr int kTablehubRebootSleepTimeInSec = 10;
+constexpr uint32_t kHubUpdaterTimeoutSeconds = 1680;
+constexpr char kLogiHubDeviceName[] = "Logitech Hub";
 
 TableHubDevice::TableHubDevice(std::string pid)
     : USBDevice(pid, kLogiDeviceTableHub), is_interface_open_(false) {
@@ -295,6 +299,9 @@ int TableHubDevice::PerformUpdate(std::vector<uint8_t> buffer,
   }
   LOG(INFO) << "Table hub firmware is not up to date. Sending "
                "image to device...";
+  std::unique_ptr<IDfuNotification> dfu_notification =
+      IDfuNotification::For(kLogiHubDeviceName);
+  dfu_notification->NotifyStartUpdate(kHubUpdaterTimeoutSeconds);
   std::string hw_version;
   error = ReadCPIData(&hw_version);
   if (error) {
@@ -309,11 +316,13 @@ int TableHubDevice::PerformUpdate(std::vector<uint8_t> buffer,
   error = GetImageVersion(buffer, &image_version);
   if (error) {
     LOG(ERROR) << "Failed to grab image version. Error: " << error;
+    dfu_notification->NotifyEndUpdate(false);
     return kLogiErrorVerifyImageVersionFailed;
   }
   if (image_version.length() > kVersionLength) {
     LOG(ERROR) << "Version Length is incorrect. Error: "
                << kLogiErrorVerifyImageVersionFailed;
+    dfu_notification->NotifyEndUpdate(false);
     return kLogiErrorVerifyImageVersionFailed;
   }
   if (hw_version.compare(kPB3) == 0)
@@ -326,6 +335,7 @@ int TableHubDevice::PerformUpdate(std::vector<uint8_t> buffer,
   error = BulkTransferOut((uint8_t*)&pkt, sizeof(DownloadPacket));
   if (error) {
     LOG(ERROR) << "Failed to send request for download. Error: " << error;
+    dfu_notification->NotifyEndUpdate(false);
     return error;
   }
   memset(&pkt, '\0', sizeof(DownloadPacket));
@@ -333,19 +343,23 @@ int TableHubDevice::PerformUpdate(std::vector<uint8_t> buffer,
   if (error) {
     LOG(ERROR) << "Failed to receive acknowlegement for download. Error: "
                << error;
+    dfu_notification->NotifyEndUpdate(false);
     return error;
   }
   if (pkt.cmd.id != kDownloadIdCmd && (pkt.cmd.status)) {
     LOG(ERROR) << "Acknowlegement received is incorrect. Error: " << error;
+    dfu_notification->NotifyEndUpdate(false);
     return error;
   }
   error = SendImage(buffer);
   if (error) {
     LOG(INFO) << "Failed to send image to device. Error: " << error;
+    dfu_notification->NotifyEndUpdate(false);
     return error;
   }
   *did_update = true;
   LOG(INFO) << "Successfully sent image to table hub.";
+  dfu_notification->NotifyEndUpdate(true);
   return error;
 }
 
