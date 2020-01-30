@@ -389,7 +389,7 @@ int VideoDevice::PerformUpdate(std::vector<uint8_t> buffer,
   device_name.append(" ");
   device_name.append(name);
   std::unique_ptr<IDfuNotification> dfu_notification =
-      IDfuNotification::For(device_name);
+      IDfuNotification::For(name);
   dfu_notification->NotifyStartUpdate();
 
   error = AitInitiateUpdate();
