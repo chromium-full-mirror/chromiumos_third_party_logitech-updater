@@ -3,11 +3,7 @@
 // found in the LICENSE file.
 
 #include "eeprom_device.h"
-
-#include <memory>
-
 #include <base/logging.h>
-#include <cfm/libdfu_notification/idfu_notification.h>
 #include "utilities.h"
 
 constexpr unsigned int kLogiEepromDeviceVersionDataSize = 2;
@@ -235,12 +231,6 @@ int EepromDevice::PerformUpdate(std::vector<uint8_t> buffer,
 
   LOG(INFO) << "eeprom firmware is not up to date. Updating firmware...";
 
-  std::string device_name;
-  GetDeviceName(&device_name);
-  device_name += " EEPROM";
-  std::unique_ptr<IDfuNotification> dfu_notification =
-      IDfuNotification::For(device_name);
-  dfu_notification->NotifyStartUpdate();
   // Stores the eeprom brand info before updating.
   bool logicool;
   int brand_info_error = ReadBrandInfo(&logicool);
@@ -249,7 +239,6 @@ int EepromDevice::PerformUpdate(std::vector<uint8_t> buffer,
   error = ParseS19(buffer, &image_blocks);
   if (error) {
     LOG(ERROR) << "Failed to parse image buffer. Error: " << error;
-    dfu_notification->NotifyEndUpdate(false);
     return error;
   }
   error = SendImage(image_blocks);
@@ -264,7 +253,6 @@ int EepromDevice::PerformUpdate(std::vector<uint8_t> buffer,
     LOG(INFO) << "Successfully updated eeprom firmware.";
     *did_update = true;
   }
-  dfu_notification->NotifyEndUpdate(!error);
   return error;
 }
 

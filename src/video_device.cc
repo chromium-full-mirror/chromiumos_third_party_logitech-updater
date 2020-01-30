@@ -4,15 +4,13 @@
 
 #include "video_device.h"
 #include <base/logging.h>
-#include <cfm/libdfu_notification/idfu_notification.h>
 #include <fcntl.h>
 #include <linux/usb/video.h>
 #include <linux/uvcvideo.h>
 #include <linux/videodev2.h>
-#include <string>
+#include <string.h>
 #include <sys/ioctl.h>
 #include <algorithm>
-#include <memory>
 #include <thread>
 #include "utilities.h"
 
@@ -88,12 +86,9 @@ int VideoDevice::GetDeviceName(std::string* device_name) {
   int error = ioctl(file_descriptor_, VIDIOC_QUERYCAP, &video_cap);
   if (error < 0)  // ioctl return -1 on failure.
     return kLogiErrorIOControlOperationFailed;
-  // copy the whole video_cap array including null character.
   std::string str(
       video_cap.card,
       video_cap.card + sizeof(video_cap.card) / sizeof(video_cap.card[0]));
-  // erase extra nulls.
-  str.erase(std::find(str.begin(), str.end(), '\0'), str.end());
   *device_name = str;
   return kLogiErrorNoError;
 }
@@ -380,28 +375,15 @@ int VideoDevice::PerformUpdate(std::vector<uint8_t> buffer,
     return error;
 
   LOG(INFO) << name << " firmware is not up to date. Updating firmware...";
-  std::string device_name;
-  if (GetDeviceName(&device_name) != kLogiErrorNoError
-      || device_name.length() == 0) {
-    // Default name used instead if no name was found.
-    device_name = "Logitech Camera";
-  }
-  device_name.append(" ");
-  device_name.append(name);
-  std::unique_ptr<IDfuNotification> dfu_notification =
-      IDfuNotification::For(name);
-  dfu_notification->NotifyStartUpdate();
 
   error = AitInitiateUpdate();
   if (error) {
     LOG(ERROR) << "Failed to initiate update. Error: " << error;
-    dfu_notification->NotifyEndUpdate(false);
     return error;
   }
   error = AitSendImage(buffer);
   if (error) {
     LOG(ERROR) << "Failed to send image. Error: " << error;
-    dfu_notification->NotifyEndUpdate(false);
     return error;
   }
   error = AitFinalizeUpdate();
@@ -411,7 +393,6 @@ int VideoDevice::PerformUpdate(std::vector<uint8_t> buffer,
     LOG(INFO) << "Successfully updated " << name << " firmware.";
     *did_update = true;
   }
-  dfu_notification->NotifyEndUpdate(error);
   return error;
 }
 
