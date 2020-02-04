@@ -26,19 +26,4 @@ RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/s
 SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="0866", \
 OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664"
 
-# Rally HID audio device rule.
-SUBSYSTEM=="hidraw", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0885", \
-OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664"
-
-# Rally DFU audio device rule.
-SUBSYSTEM=="hidraw", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0886", \
-OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664"
-
-# Rally video device rule.
-SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="0881", \
-OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664"
-
-# Rally TableHub device rule.
-SUBSYSTEM=="usb", ACTION=="add", ATTR{idVendor}=="046d", ATTR{idProduct}=="088f", \
-OWNER="cfm-firmware-updaters", MODE="0664", \
-RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=20 -update_components"
+# TODO(b/146157289): Restore Rally firmware updater.
