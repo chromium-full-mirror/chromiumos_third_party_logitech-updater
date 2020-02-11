@@ -27,3 +27,6 @@ SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL
 OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664"
 
 # TODO(b/146157289): Restore Rally firmware updater.
+
+# Rally Mic rule for unique ALSA id.
+SUBSYSTEM=="sound", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0885", ATTR{id}="RallyMic"
