@@ -37,3 +37,6 @@ RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/s
 SUBSYSTEM=="usb", ACTION=="add", ATTR{idVendor}=="046d", ATTR{idProduct}=="0876", \
 OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664", \
 RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=90 --update_components"
+
+# Rally Mic rule for unique ALSA id.
+SUBSYSTEM=="sound", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0885", ATTR{id}="RallyMic"
