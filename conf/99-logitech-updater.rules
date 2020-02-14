@@ -3,40 +3,55 @@
 # found in the LICENSE file.
 
 # PTZ Pro 2 video device rule.
+# TODO(b/148570796): Restore PTZ Pro 2 firmware updater.
 SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="085f", \
-OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664", \
-RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=5 --update_components"
+OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664"
 
 # PTZ Pro video device rule.
+# TODO(b/148570796): Restore PTZ Pro firmware updater.
 SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="0853", \
-OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664", \
-RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=10 --update_components"
+OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664"
 
 # MeetUp/Logi Group DFU audio device rule.
+# TODO(b/148570796): Restore MeetUp firmware updater.
 SUBSYSTEM=="hidraw", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0859", \
-OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664", \
-RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=5 --update_dfu_audio"
+OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664"
 
 # MeetUp HID audio device rule.
+# TODO(b/148570796): Restore MeetUp firmware updater.
 SUBSYSTEM=="hidraw", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0867", \
-OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664", \
-RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=5 --update_components"
+OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664"
 
 # MeetUp video device rule
 SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="0866", \
 OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664"
 
+# Rally HID audio device rule.
+SUBSYSTEM=="hidraw", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0885", \
+OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664"
+
+# Rally DFU audio device rule.
+SUBSYSTEM=="hidraw", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0886", \
+OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664"
+
+# Rally video device rule.
+SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="0881", \
+OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664"
+
+# Rally TableHub device rule.
 # TODO(b/146157289): Restore Rally firmware updater.
+SUBSYSTEM=="usb", ACTION=="add", ATTR{idVendor}=="046d", ATTR{idProduct}=="088f", \
+OWNER="cfm-firmware-updaters", MODE="0664"
 
 # TAP Flare PIR sensor rule.
+# TODO(b/148570796): Restore TAP firmware updater.
 SUBSYSTEM=="usb", ACTION=="add", ATTR{idVendor}=="046d", ATTR{idProduct}=="0872", \
-OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664", \
-RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=90 --update_components"
+OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664"
 
 # TAP HDMI Capture device rule.
+# TODO(b/148570796): Restore TAP firmware updater.
 SUBSYSTEM=="usb", ACTION=="add", ATTR{idVendor}=="046d", ATTR{idProduct}=="0876", \
-OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664", \
-RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=90 --update_components"
+OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664"
 
 # Rally Mic rule for unique ALSA id.
 SUBSYSTEM=="sound", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0885", ATTR{id}="RallyMic"
