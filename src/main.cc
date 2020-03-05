@@ -90,6 +90,20 @@ const char kLogiRallyImagePath[] = "/lib/firmware/logitech/rally/tablehub.bin";
 const char kLogiRallyVersionsPath[] =
     "/lib/firmware/logitech/rally/versions.bin";
 
+// Note DEVICES_BEGIN/DEVICES_END are used for range check
+// Add new device(s) in-between
+enum {
+  DEVICES_BEGIN = 0,
+  kLogiDeviceTypePTZPro2 = 1,
+  kLogiDeviceTypePTZPro = 2,
+  kLogiDeviceTypeMeetUpDfu = 3,
+  kLogiDeviceTypeMeetUpAudio = 4,
+  kLogiDeviceTypeRally = 5,
+  kLogiDeviceTypeTapSensor = 6,
+  kLogiDeviceTypeTapHDMI = 7,
+  DEVICES_END
+};
+
 /**
  * @brief Prints version info from info map.
  * @param info_map The map containing versions.
@@ -380,6 +394,30 @@ void ConfigureLogging(std::string log_file) {
     logging::InitLogging(logging_settings);
   }
 }
+
+/**
+ * @brief Ensure image(s) exist, check version if requested
+ * @param device The composite device to check
+ * @param name Name of composite device
+ * @param check_version Check and print version
+ * @param set_force_update Setup device for force upgrade
+ */
+int CheckForImage(std::shared_ptr<CompositeDevice> device,
+                  const char* name,
+                  bool check_version,
+                  bool set_force_update) {
+  if (!device->AreImagesPresent()) {
+    LOG(ERROR) << name << " image not found.";
+    return kLogiErrorImageVersionNotFound;
+  }
+  if (check_version) {
+    CheckImageVersion(device, name);
+    LOG(INFO) << "Exiting updater with code: " << kLogiErrorNoError;
+    return kLogiErrorNoError;  // Done here. Rest is N/A
+  }
+  device->SetForceUpdate(set_force_update);
+  return kLogiErrorNoError;
+}
 }  // namespace
 
 /**
@@ -424,13 +462,19 @@ int main(int argc, char** argv) {
                 "Delay this executable when it starts. This option is used to "
                 "integrate Udev.");
 
+  // Process specified device only
+  DEFINE_uint64(id, 0,
+                "Device type. PTZPro2=1, PtzPro=2, MeetUpDfu=3, "
+                "MeetUpAudio=4, Rally=5, TapSensor=6, TapHDMI=7.");
+
   DEFINE_string(log_to, "", "Specify log file to write messages to.");
   brillo::FlagHelper::Init(argc, argv, "logitech-updater");
 
   // Configures log file.
   ConfigureLogging(FLAGS_log_to);
   if (FLAGS_lock && !LockUpdater()) {
-    LOG(ERROR) << "There is another logitech-updater running. Exiting now...";
+    LOG(ERROR) << "There is another logitech-updater running. Exiting now. ID="
+               << FLAGS_id;
     return 0;
   }
   if (FLAGS_delay > 0) {
@@ -439,123 +483,183 @@ int main(int argc, char** argv) {
   }
   int error = kLogiErrorNoError;
 
-  // PTZ Pro 2 device.
-  std::shared_ptr<CompositeDevice> ptzpro2_device =
-      std::make_shared<CompositeDevice>(kLogiPtzPro2Pid, kLogiPtzPro2Pid,
-                                        kLogiPtzPro2Pid);
-  ApplyPTZPro2Firmware(ptzpro2_device, FLAGS_test_sig);
-  if (!ptzpro2_device->AreImagesPresent())
-    LOG(ERROR) << kLogiPtzPro2Name << " image not found.";
-
-  // MeetUp device.
-  std::shared_ptr<CompositeDevice> meetup_device =
-      std::make_shared<CompositeDevice>();
-  meetup_device->AddDevice(kLogiDeviceVideo, kLogiMeetUpVideoPid);
-  meetup_device->AddDevice(kLogiDeviceEeprom, kLogiMeetUpVideoPid);
-  meetup_device->AddDevice(kLogiDeviceAudio, kLogiMeetUpAudioPid,
-                           kLogiMeetUpAudioDfuPid);
-  meetup_device->AddDevice(kLogiDeviceCodec, kLogiMeetUpAudioPid);
-  meetup_device->AddDevice(kLogiDeviceBle, kLogiMeetUpAudioPid);
-  meetup_device->SetSupportBle(true);
-  ApplyMeetUpFirmware(meetup_device, FLAGS_test_sig);
-  if (!meetup_device->AreImagesPresent())
-    LOG(ERROR) << kLogiMeetUpName << " image not found.";
-
-  // PTZ Pro device.
-  std::shared_ptr<CompositeDevice> ptzpro_device =
-      std::make_shared<CompositeDevice>();
-  ptzpro_device->AddDevice(kLogiDeviceVideo, kLogiPtzProVideoPid);
-  ptzpro_device->AddDevice(kLogiDeviceEeprom, kLogiPtzProVideoPid);
-  ApplyPTZProFirmware(ptzpro_device, FLAGS_test_sig);
-  // Rally system.
-  std::shared_ptr<CompositeDevice> rally_system =
-      std::make_shared<CompositeDevice>();
-  rally_system->AddDevice(kLogiDeviceAudio, kLogiRallyAudioPid,
-                          kLogiRallyAudioDfuPid);
-  rally_system->AddDevice(kLogiDeviceVideo, kLogiRallyVideoPid);
-  rally_system->AddDevice(kLogiDeviceTableHub, kLogiRallyTableHubPid);
-  ApplyRallyFirmware(rally_system, FLAGS_test_sig);
-  if (!rally_system->AreImagesPresent())
-    LOG(ERROR) << kLogiRallyName << " image not found.";
-
-  // Tap device.
-  std::shared_ptr<CompositeDevice> tap_device =
-      std::make_shared<CompositeDevice>();
-  tap_device->AddDevice(kLogiDeviceHdmi, kLogiTapHdmiPid);
-  ApplyTapFirmware(tap_device, FLAGS_test_sig);
-
-  if (FLAGS_binary_version)
-    std::cout << kLogiBinaryVersion << std::endl;
-
-  if (FLAGS_device_version) {
-    CheckDeviceVersion(ptzpro2_device);
-    CheckDeviceVersion(meetup_device);
-    CheckDeviceVersion(ptzpro_device);
-    CheckDeviceVersion(tap_device);
-    CheckDeviceVersion(rally_system);
+  if (FLAGS_binary_version) {
+    LOG(INFO) << "Binary version: " << kLogiBinaryVersion;
+    LOG(INFO) << "Exiting updater with code: " << kLogiErrorNoError;
+    return kLogiErrorNoError;  // Done here. Rest is N/A
   }
 
-  if (FLAGS_image_version) {
-    ApplyPTZPro2Firmware(ptzpro2_device, FLAGS_test_sig);
-    CheckImageVersion(ptzpro2_device, kLogiPtzPro2Name);
-
-    ApplyMeetUpFirmware(meetup_device, FLAGS_test_sig);
-    CheckImageVersion(meetup_device, kLogiMeetUpName);
-
-    ApplyPTZProFirmware(ptzpro_device, FLAGS_test_sig);
-    CheckImageVersion(ptzpro_device, kLogiPtzProName);
-
-    ApplyTapFirmware(tap_device, FLAGS_test_sig);
-    CheckImageVersion(tap_device, kLogiTapName);
-
-    ApplyRallyFirmware(rally_system, FLAGS_test_sig);
-    CheckImageVersion(rally_system, kLogiRallyName);
+  if ((FLAGS_id <= DEVICES_BEGIN) || ((FLAGS_id >= DEVICES_END))) {
+    LOG(ERROR) << "Unsupported device type: " << FLAGS_id;
+    return kLogiErrorDeviceNotPresent;
   }
 
-  ptzpro2_device->SetForceUpdate(FLAGS_force);
-  meetup_device->SetForceUpdate(FLAGS_force);
-  ptzpro_device->SetForceUpdate(FLAGS_force);
-  tap_device->SetForceUpdate(FLAGS_force);
-  rally_system->SetForceUpdate(FLAGS_force);
+  std::shared_ptr<CompositeDevice> composite_device = nullptr;
   bool did_update = false;
-  if (FLAGS_update_components || FLAGS_update_dfu_audio) {
-    if (FLAGS_update_components && ptzpro2_device->IsDevicePresent()) {
-      error = ApplyPTZPro2Firmware(ptzpro2_device, FLAGS_test_sig);
-      if (!error)
-        error = ptzpro2_device->PerformComponentUpdate(&did_update);
-    }
-
-    if (FLAGS_update_components && ptzpro_device->IsDevicePresent()) {
-      error = ApplyPTZProFirmware(ptzpro_device, FLAGS_test_sig);
-      if (!error)
-        error = ptzpro_device->PerformComponentUpdate(&did_update);
-    }
-
-    if (meetup_device->IsDevicePresent()) {
-      error = ApplyMeetUpFirmware(meetup_device, FLAGS_test_sig);
-      if (!error) {
-        if (FLAGS_update_components)
-          error = meetup_device->PerformComponentUpdate(&did_update);
-        if (FLAGS_update_dfu_audio)
-          error = meetup_device->PerformDfuAudioUpdate();
+  switch (FLAGS_id) {
+    // PTZ Pro 2 device.
+    case kLogiDeviceTypePTZPro2:
+      composite_device = std::make_shared<CompositeDevice>(
+          kLogiPtzPro2Pid, kLogiPtzPro2Pid, kLogiPtzPro2Pid);
+      if (FLAGS_device_version) {
+        CheckDeviceVersion(composite_device);
+        LOG(INFO) << "Exiting updater with code: " << kLogiErrorNoError;
+        return kLogiErrorNoError;  // Done here. Rest is N/A
       }
-    }
 
-    if (FLAGS_update_components && tap_device->IsDevicePresent()) {
-      error = ApplyTapFirmware(tap_device, FLAGS_test_sig);
-      if (!error) {
-        error = tap_device->PerformComponentUpdate(&did_update);
+      // Images must exist for subsequent operations
+      error = ApplyPTZPro2Firmware(composite_device, FLAGS_test_sig);
+      if (error) {
+        LOG(ERROR) << "Exiting updater with code: " << error;
+        return error;
+      }
+
+      // Ensure image(s) exist, setup for upgrade, if requested
+      error = CheckForImage(composite_device, kLogiPtzPro2Name,
+                            FLAGS_image_version, FLAGS_force);
+      if (error || FLAGS_image_version)
+        return error;  // Done here. Rest is N/A
+
+      if (FLAGS_update_components && composite_device->IsDevicePresent())
+        error = composite_device->PerformComponentUpdate(&did_update);
+      LOG(INFO) << "Exiting updater with code: " << error;
+      break;
+
+    case kLogiDeviceTypePTZPro:
+      // PTZ Pro device.
+      composite_device = std::make_shared<CompositeDevice>();
+      composite_device->AddDevice(kLogiDeviceVideo, kLogiPtzProVideoPid);
+      composite_device->AddDevice(kLogiDeviceEeprom, kLogiPtzProVideoPid);
+      if (FLAGS_device_version) {
+        CheckDeviceVersion(composite_device);
+        LOG(INFO) << "Exiting updater with code: " << kLogiErrorNoError;
+        return kLogiErrorNoError;  // Done here. Rest is N/A
+      }
+
+      // Images must exist for subsequent operations
+      error = ApplyPTZProFirmware(composite_device, FLAGS_test_sig);
+      if (error) {
+        LOG(ERROR) << "Exiting updater with code: " << error;
+        return error;
+      }
+
+      // Ensure image(s) exist, setup for upgrade, if requested
+      error = CheckForImage(composite_device, kLogiPtzProName,
+                            FLAGS_image_version, FLAGS_force);
+      if (error || FLAGS_image_version)
+        return error;  // Done here. Rest is N/A
+
+      if (FLAGS_update_components && composite_device->IsDevicePresent())
+        error = composite_device->PerformComponentUpdate(&did_update);
+      LOG(INFO) << "Exiting updater with code: " << error;
+      break;
+
+    case kLogiDeviceTypeMeetUpDfu:
+    case kLogiDeviceTypeMeetUpAudio:
+      // MeetUp device.
+      composite_device = std::make_shared<CompositeDevice>();
+      composite_device->AddDevice(kLogiDeviceVideo, kLogiMeetUpVideoPid);
+      composite_device->AddDevice(kLogiDeviceEeprom, kLogiMeetUpVideoPid);
+      composite_device->AddDevice(kLogiDeviceAudio, kLogiMeetUpAudioPid,
+                                  kLogiMeetUpAudioDfuPid);
+      composite_device->AddDevice(kLogiDeviceCodec, kLogiMeetUpAudioPid);
+      composite_device->AddDevice(kLogiDeviceBle, kLogiMeetUpAudioPid);
+      composite_device->SetSupportBle(true);
+      if (FLAGS_device_version) {
+        CheckDeviceVersion(composite_device);
+        LOG(INFO) << "Exiting updater with code: " << kLogiErrorNoError;
+        return kLogiErrorNoError;  // Done here. Rest is N/A
+      }
+
+      // Images must exist for subsequent operations
+      error = ApplyMeetUpFirmware(composite_device, FLAGS_test_sig);
+      if (error) {
+        LOG(ERROR) << "Exiting updater with code: " << error;
+        return error;
+      }
+      // Ensure image(s) exist, setup for upgrade, if requested
+      error = CheckForImage(composite_device, kLogiMeetUpName,
+                            FLAGS_image_version, FLAGS_force);
+      if (error || FLAGS_image_version)
+        return error;  // Done here. Rest is N/A
+
+      if (FLAGS_update_components || FLAGS_update_dfu_audio) {
+        if (composite_device->IsDevicePresent()) {
+          if (FLAGS_update_components)
+            error = composite_device->PerformComponentUpdate(&did_update);
+          if (FLAGS_update_dfu_audio)
+            error = composite_device->PerformDfuAudioUpdate();
+        }
+      }
+      LOG(INFO) << "Exiting updater with code: " << error;
+      break;
+
+    case kLogiDeviceTypeRally:
+      // Rally system.
+      composite_device = std::make_shared<CompositeDevice>();
+      composite_device->AddDevice(kLogiDeviceAudio, kLogiRallyAudioPid,
+                                  kLogiRallyAudioDfuPid);
+      composite_device->AddDevice(kLogiDeviceVideo, kLogiRallyVideoPid);
+      composite_device->AddDevice(kLogiDeviceTableHub, kLogiRallyTableHubPid);
+      if (FLAGS_device_version) {
+        CheckDeviceVersion(composite_device);
+        LOG(INFO) << "Exiting updater with code: " << kLogiErrorNoError;
+        return kLogiErrorNoError;  // Done here. Rest is N/A
+      }
+
+      // Images must exist for subsequent operations
+      error = ApplyRallyFirmware(composite_device, FLAGS_test_sig);
+      if (error) {
+        LOG(ERROR) << "Exiting updater with code: " << error;
+        return error;
+      }
+
+      // Ensure image(s) exist, setup for upgrade, if requested
+      error = CheckForImage(composite_device, kLogiRallyName,
+                            FLAGS_image_version, FLAGS_force);
+      if (error || FLAGS_image_version)
+        return error;  // Done here. Rest is N/A
+
+      if (FLAGS_update_components || FLAGS_update_dfu_audio) {
+        if (composite_device->IsDevicePresent(kLogiDeviceTableHub))
+          error = composite_device->PerformSystemUpdate();
+      }
+      LOG(INFO) << "Exiting updater with code: " << error;
+      break;
+
+    case kLogiDeviceTypeTapSensor:
+    case kLogiDeviceTypeTapHDMI:
+      // Tap device.
+      composite_device = std::make_shared<CompositeDevice>();
+      composite_device->AddDevice(kLogiDeviceHdmi, kLogiTapHdmiPid);
+      if (FLAGS_device_version) {
+        CheckDeviceVersion(composite_device);
+        LOG(INFO) << "Exiting updater with code: " << kLogiErrorNoError;
+        return kLogiErrorNoError;  // Done here. Rest is N/A
+      }
+
+      // Images must exist for subsequent operations
+      error = ApplyTapFirmware(composite_device, FLAGS_test_sig);
+      if (error) {
+        LOG(ERROR) << "Exiting updater with code: " << error;
+        return error;
+      }
+
+      // Ensure image(s) exist, setup for upgrade, if requested
+      error = CheckForImage(composite_device, kLogiTapName, FLAGS_image_version,
+                            FLAGS_force);
+      if (error || FLAGS_image_version)
+        return error;  // Done here. Rest is N/A
+
+      if (FLAGS_update_components || FLAGS_update_dfu_audio) {
+        error = composite_device->PerformComponentUpdate(&did_update);
         if (did_update)
-          tap_device->PowerCycleTDEMode(kLogiTapMcuPid);
+          composite_device->PowerCycleTDEMode(kLogiTapMcuPid);
       }
-    }
-
-    if (rally_system->IsDevicePresent(kLogiDeviceTableHub)) {
-      error = ApplyRallyFirmware(rally_system, FLAGS_test_sig);
-      if (!error)
-        error = rally_system->PerformSystemUpdate();
-    }
+      break;
+    default:
+      LOG(ERROR) << "Unsupported device type:  " << FLAGS_id;
+      break;
   }
-  LOG(INFO) << "Exiting updater with code: " << error;
   return error;
 }
