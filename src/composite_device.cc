@@ -146,7 +146,7 @@ int CompositeDevice::GetImagesVersionFromFile(
   if (error) {
     return error;
   }
-  for (const auto pair : image_version_map) {
+  for (const auto& pair : image_version_map) {
     if (pair.first == kVideoSearchString)
       version_map[kLogiDeviceVideo] = pair.second;
     else if (pair.first == kAudioSearchString)
