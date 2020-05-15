@@ -107,9 +107,9 @@ std::string GetDeviceStringVersion(int major, int minor) {
 std::string GetDeviceStringVersion(uint8_t major,
                                    uint8_t minor,
                                    uint8_t build) {
-  std::string major_str = base::IntToString(major);
-  std::string minor_str = base::IntToString(minor);
-  std::string build_str = base::IntToString(build);
+  std::string major_str = base::NumberToString(major);
+  std::string minor_str = base::NumberToString(minor);
+  std::string build_str = base::NumberToString(build);
   std::stringstream str_stream;
   str_stream << major_str << "." << minor_str << "." << build_str;
   return str_stream.str();
@@ -145,8 +145,9 @@ bool GetDeviceVersionFromInt(int num, std::string* version_str) {
     return false;
   }
   std::string major2;
-  *version_str = base::IntToString(major) + "." + base::IntToString(minor) +
-                 "." + base::IntToString(build);
+  *version_str = base::NumberToString(major) + "." +
+                 base::NumberToString(minor) + "." +
+                 base::NumberToString(build);
   return true;
 }
 

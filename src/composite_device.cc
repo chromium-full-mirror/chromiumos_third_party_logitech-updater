@@ -97,20 +97,21 @@ int CompositeDevice::GetDevicesVersionFromAudio(
   if (error)
     return error;
   std::string device_version =
-      base::IntToString(topology.tablehub.ver_major) + "." +
-      base::IntToString(topology.tablehub.ver_minor) + "." +
-      base::IntToString(topology.tablehub.ver_build);
+      base::NumberToString(topology.tablehub.ver_major) + "." +
+      base::NumberToString(topology.tablehub.ver_minor) + "." +
+      base::NumberToString(topology.tablehub.ver_build);
   version_map[kLogiDeviceTableHub] = device_version;
   if (topology.micpods.size() > 0) {
-    device_version = base::IntToString(topology.micpods[0].ver_major) + "." +
-                     base::IntToString(topology.micpods[0].ver_minor) + "." +
-                     base::IntToString(topology.micpods[0].ver_build);
+    device_version = base::NumberToString(topology.micpods[0].ver_major) + "." +
+                     base::NumberToString(topology.micpods[0].ver_minor) + "." +
+                     base::NumberToString(topology.micpods[0].ver_build);
     version_map[kLogiDeviceMicPod] = device_version;
   }
   if (topology.splitters.size() > 0) {
-    device_version = base::IntToString(topology.splitters[0].ver_major) + "." +
-                     base::IntToString(topology.splitters[0].ver_minor) + "." +
-                     base::IntToString(topology.splitters[0].ver_build);
+    device_version =
+        base::NumberToString(topology.splitters[0].ver_major) + "." +
+        base::NumberToString(topology.splitters[0].ver_minor) + "." +
+        base::NumberToString(topology.splitters[0].ver_build);
     version_map[kLogiDeviceSplitter] = device_version;
   }
   version_map[kLogiDeviceVideo] = topology.video_version;
