@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 access: 1
+alarm: 1
 arch_prctl: 1
 bind: 1
 brk: 1
@@ -11,8 +12,8 @@ close: 1
 connect: 1
 execve: 1
 exit_group: 1
-# fcntl: arg1 == F_SETLK || arg1 == F_GETFD || arg1 == F_GETFL || arg1 == F_SETFL
-fcntl: arg1 == 6 || arg1 == 1 || arg1 == 3 || arg1 == 4
+# fcntl: arg1 == F_SETLK || arg1 == F_GETFD || arg1 == F_GETFL || arg1 == F_SETFL || arg1 == F_SETLKW
+fcntl: arg1 == 6 || arg1 == 1 || arg1 == 3 || arg1 == 4 || arg1 == 7
 fstat: 1
 futex: 1
 getdents: 1

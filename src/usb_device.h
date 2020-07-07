@@ -52,7 +52,10 @@ enum {
   kLogiErrorSignatureValidationFailed,
   kLogiErrorInvalidBleNameSize,
   kLogiErrorUnknown,
-  kLogiErrorTimeout
+  kLogiErrorTimeout,
+  kLogiErrorLockFileOpenFailed,
+  kLogiErrorLockFileLockFailed,
+  kLogiErrorProcessAlreadyRunning
 };
 
 enum {

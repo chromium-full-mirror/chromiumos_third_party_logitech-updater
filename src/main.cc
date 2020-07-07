@@ -12,6 +12,8 @@
 #include <fcntl.h>
 #include <linux/hidraw.h>
 #include <sys/socket.h>
+#include <signal.h>  // sigaction()
+#include <unistd.h>  // alarm()
 #include "base/files/file.h"
 #include "composite_device.h"
 #include "utilities.h"
@@ -103,6 +105,27 @@ enum {
   kLogiDeviceTypeTapHDMI = 7,
   DEVICES_END
 };
+
+// Timeout for this process to wait, for another instance to finish
+constexpr int kLogiProcessWaitMaxTime =
+    (kLogiPollingSleep / 1000) * kLogiPollingMaxTimeout;
+
+// Timeout handler function
+void TimeoutHandler(int signum) {
+  if (signum == SIGALRM) {
+    LOG(INFO) << "Checking for logitech-updater running status.";
+    int error = CheckUpdater();
+    if (error != kLogiErrorNoError) {
+      LOG(ERROR)
+          << "Another logitech-updater still running. Exiting now. Error="
+          << error;
+      exit(1);
+    }
+    // This process has already acquired the file lock
+    LOG(INFO) << "logitech-updater running normally. Timeout ignored.";
+  }
+  return;
+}
 
 /**
  * @brief Prints version info from info map.
@@ -472,13 +495,38 @@ int main(int argc, char** argv) {
 
   // Configures log file.
   ConfigureLogging(FLAGS_log_to);
-  if (FLAGS_lock && !LockUpdater()) {
-    LOG(ERROR) << "There is another logitech-updater running. Exiting now. ID="
-               << FLAGS_id;
-    return 0;
+  LOG(INFO) << "Logitech updater instance invoked. ID=" << FLAGS_id;
+  if (FLAGS_lock) {
+    // LockUpdater is blocking call.
+    // Setup alarm/SIGALRM to terminate this instance,
+    // if timeout occurs and other instance still running
+    struct sigaction action, old_action;
+    unsigned int old_timeout;
+
+    // Cancel any existing alarm
+    old_timeout = alarm(0);
+
+    // Establish signal handler
+    action.sa_handler = TimeoutHandler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = SA_RESTART;
+    sigaction(SIGALRM, &action, &old_action);
+
+    alarm(kLogiProcessWaitMaxTime);
+
+    if (!LockUpdater()) {
+      LOG(ERROR)
+          << "There is another logitech-updater running. Exiting now. ID="
+          << FLAGS_id;
+      return kLogiErrorProcessAlreadyRunning;
+    }
+
+    // Reset the signal handler and alarm
+    sigaction(SIGALRM, &old_action, NULL);
+    alarm(old_timeout);
   }
   if (FLAGS_delay > 0) {
-    LOG(INFO) << "Delaying " << FLAGS_delay << " seconds.";
+    LOG(INFO) << "Delaying " << FLAGS_delay << " seconds. ID=" << FLAGS_id;
     sleep(FLAGS_delay);
   }
   int error = kLogiErrorNoError;
