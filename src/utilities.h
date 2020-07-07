@@ -168,10 +168,19 @@ bool ContainString(std::string str, std::string substring, bool case_sensitive);
 
 /**
  * @brief Locks this updater to have only 1 instance running.
+ * This is blocking call if another instance already running
  * @return true if there is no other logitech-updater processed running and was
  * able to lock the lock file, false otherwise.
  */
 bool LockUpdater();
+
+/**
+ * @brief Check if updater instance is already running.
+ * @return kLogiErrorNoError if there is no other logitech-updater processed
+ * running and was able to acquire the lock file Return
+ * kLogiErrorLockFileOpenFailed/kLogiErrorLockFileLockFailed otherwise.
+ */
+int CheckUpdater();
 
 /**
  * @brief Generates RSA crypto.

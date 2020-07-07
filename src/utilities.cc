@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "utilities.h"
+#include "usb_device.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <fstream>
@@ -354,6 +355,7 @@ bool ContainString(std::string str,
   return false;
 }
 
+// Blocking call. Leverage alarm/SIGALRM for termination
 bool LockUpdater() {
   int lockfile = open(kLogitechLockFile, O_WRONLY | O_CREAT, 0664);
   if (lockfile < 0)
@@ -364,9 +366,28 @@ bool LockUpdater() {
   fl.l_whence = SEEK_SET;
   fl.l_start = 0;
   fl.l_len = 0;
-  if (fcntl(lockfile, F_SETLK, &fl) < 0)
+  if (fcntl(lockfile, F_SETLKW, &fl) < 0)
     return false;
   return true;
+}
+
+// Invoked as part of SIGALRM signal processing
+// No action if Process already running normally
+int CheckUpdater() {
+  int lockfile = open(kLogitechLockFile, O_RDWR);
+  if (lockfile < 0)
+    return kLogiErrorLockFileOpenFailed;
+
+  struct flock fl;
+  fl.l_type = F_RDLCK;
+  fl.l_whence = SEEK_SET;
+  fl.l_start = 0;
+  fl.l_len = 0;
+  fl.l_pid = 0;
+
+  if (fcntl(lockfile, F_SETLK, &fl) < 0)
+    return kLogiErrorLockFileLockFailed;
+  return kLogiErrorNoError;
 }
 
 bool GenerateRSA(bool test_mode, RSA** out_rsa) {
