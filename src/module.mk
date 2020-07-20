@@ -6,7 +6,7 @@ include common.mk
 
 BINARY_NAME := logitech-updater
 
-PC_DEPS = libbrillo-$(BASE_VER) libchrome-$(BASE_VER) libcrypto libssl \
+PC_DEPS = libbrillo libchrome-$(BASE_VER) libcrypto libssl \
   libusb-1.0  cfm-dfu-notification
 PC_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PC_DEPS))
 PC_LIBS := $(shell $(PKG_CONFIG) --libs $(PC_DEPS))
