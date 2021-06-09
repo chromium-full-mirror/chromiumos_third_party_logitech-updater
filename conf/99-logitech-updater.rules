@@ -3,20 +3,16 @@
 # found in the LICENSE file.
 # PTZ Pro 2 video device rule.
 SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="085f", \
-OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664", \
-RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=5 --update_components --id=1"
+OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664"
 # PTZ Pro video device rule.
 SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="0853", \
-OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664", \
-RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=10 --update_components --id=2"
+OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664"
 # MeetUp/Logi Group DFU audio device rule.
 SUBSYSTEM=="hidraw", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0859", \
-OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664", \
-RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=5 --update_dfu_audio --id=3"
+OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664"
 # MeetUp HID audio device rule.
 SUBSYSTEM=="hidraw", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0867", \
-OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664", \
-RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=5 --update_components --id=4"
+OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664"
 # MeetUp video device rule
 SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="0866", \
 OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664"
@@ -31,8 +27,7 @@ SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL
 OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664"
 # Rally TableHub device rule.
 SUBSYSTEM=="usb", ACTION=="add", ATTR{idVendor}=="046d", ATTR{idProduct}=="088f", \
-OWNER="cfm-firmware-updaters", MODE="0664", \
-RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=20 --update_components --id=5"
+OWNER="cfm-firmware-updaters", MODE="0664"
 
 # Rally Mic rule for unique ALSA id.
 SUBSYSTEM=="sound", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0885", ATTR{id}="RallyMic"
