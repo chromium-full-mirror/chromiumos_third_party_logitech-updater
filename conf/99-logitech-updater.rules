@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 # PTZ Pro 2 video device rule.
-UBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="085f", \
+SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="085f", \
 OWNER="cfm-firmware-updaters", GROUP="video", MODE="0664", \
 RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=5 --update_components --id=1"
 # PTZ Pro video device rule.
