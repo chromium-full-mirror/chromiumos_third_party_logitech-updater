@@ -39,6 +39,9 @@ constexpr uint8_t kMcuPinSet = 0x06;
 constexpr uint8_t kMcuPwrSet = 0x2D;
 constexpr uint8_t kMcuPwrReset = 0x2E;
 
+const char kLogiMeetUpName[] = "MeetUp";
+const char kLogiMeetUpOldCodecFirmwareVersion[] = "8.0.216";
+
 CompositeDevice::CompositeDevice() {}
 
 CompositeDevice::CompositeDevice(std::string video_pid,
@@ -260,6 +263,27 @@ int CompositeDevice::PerformComponentUpdate(bool* updated) {
     std::shared_ptr<USBDevice> device = GetDeviceFromType(type);
     if (!device)
       continue;
+
+    // To support backward compatibility with older codec firmware version,
+    // always forcefully upgrade codec firmware (if running 8.0.216)
+    if (type == kLogiDeviceCodec) {
+      if (name.find(kLogiMeetUpName) != std::string::npos) {
+        std::map<int, std::string> info_map;
+        error = GetDevicesVersion(info_map);
+        if (!error) {
+          if (info_map.find(kLogiDeviceCodec) != info_map.end()) {
+            if (CompareVersions(info_map[kLogiDeviceCodec],
+                                kLogiMeetUpOldCodecFirmwareVersion) == 0) {
+              LOG(WARNING) << "Device running older Codec firmware "
+                           << info_map[kLogiDeviceCodec].c_str()
+                           << ", upgrading forcefully";
+              device->force_update_ = true;
+            }
+          }
+        }
+      }
+    }
+
     std::vector<uint8_t> buffer = image_buffers_[type];
     std::vector<uint8_t> header = secure_headers_[type];
 
@@ -759,8 +783,8 @@ int CompositeDevice::GetComponentCount(int& count,
   if (topology.audio_ble_version.length() != 0)
     count++;
   if (topology.video_version.length() != 0 &&
-      CompareVersions(topology.video_version,
-                      kLogiDefaultRallyVideoVersion) < 0)
+      CompareVersions(topology.video_version, kLogiDefaultRallyVideoVersion) <
+          0)
 
     count++;
   if (topology.video_eeprom_version.length() != 0 &&
