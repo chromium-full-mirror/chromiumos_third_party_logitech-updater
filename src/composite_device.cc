@@ -42,6 +42,8 @@ constexpr uint8_t kMcuPwrReset = 0x2E;
 const char kLogiMeetUpName[] = "MeetUp";
 const char kLogiMeetUpOldCodecFirmwareVersion[] = "8.0.216";
 
+const char kLogiPtzPro2Name[] = "PTZ Pro 2";
+
 CompositeDevice::CompositeDevice() {}
 
 CompositeDevice::CompositeDevice(std::string video_pid,
@@ -282,6 +284,16 @@ int CompositeDevice::PerformComponentUpdate(bool* updated) {
           }
         }
       }
+    }
+
+    // For PTZPro2, skip MCU upgrade. Let new Video firmware (2.0.187+)
+    // upgrade MCU
+    if ((type == kLogiDeviceMcu2) &&
+        (name.find(kLogiPtzPro2Name) != std::string::npos)) {
+      bool skip_update;
+      error = CheckMCUUpdate(&skip_update, name);
+      if ((error) || (skip_update))
+        continue;
     }
 
     std::vector<uint8_t> buffer = image_buffers_[type];
@@ -795,5 +807,40 @@ int CompositeDevice::GetComponentCount(int& count,
       CompareVersions(topology.video_ble_version,
                       kLogiDefaultRallyVideoBleVersion) < 0)
     count++;
+  return kLogiErrorNoError;
+}
+
+int CompositeDevice::CheckMCUUpdate(bool* skip_update,
+                                    std::string device_name) {
+  *skip_update = false;
+  std::map<int, std::string> image_info_map;
+  int error = GetImagesVersion(image_info_map);
+  if (error) {
+    LOG(ERROR) << "Failed to determine Video image version for "
+               << device_name.c_str();
+    return error;
+  }
+  std::map<int, std::string> device_info_map;
+  error = GetDevicesVersion(device_info_map);
+  if (error) {
+    LOG(ERROR) << "Failed to determine Video device version for "
+               << device_name.c_str();
+    return error;
+  }
+  if (CompareVersions(device_info_map[kLogiDeviceVideo],
+                      image_info_map[kLogiDeviceVideo]) != 0) {
+    LOG(INFO) << "Skipping MCU upgrade. Let new Video firmware "
+              << image_info_map[kLogiDeviceVideo].c_str() << ", upgrade MCU";
+    *skip_update = true;
+    return kLogiErrorNoError;
+  }
+  if (CompareVersions(device_info_map[kLogiDeviceMcu2],
+                      image_info_map[kLogiDeviceMcu2]) != 0) {
+    LOG(INFO) << "New Video firmware updating MCU firmware. Device will be "
+                 "reset after update";
+    *skip_update = true;
+    return kLogiErrorNoError;
+  }
+  // If here then MCU update needed
   return kLogiErrorNoError;
 }
