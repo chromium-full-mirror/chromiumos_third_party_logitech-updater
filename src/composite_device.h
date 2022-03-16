@@ -116,7 +116,7 @@ class CompositeDevice {
    */
   int GetImagesVersion(std::map<int, std::string>& version_map);
 
-   /**
+  /**
    * @brief Sets image buffer. It does not retain or copy the buffer. It
    * @brief Set image buffer. It does not retain or copy the buffer. It
    * @brief Grabs the firmware image's component firmware versions.
@@ -131,7 +131,6 @@ class CompositeDevice {
    * one of the component versions.
    */
   int GetImagesVersionFromFile(std::map<int, std::string>& version_map);
-
 
   /**
    * @brief Sets image buffer. It does not retain or copy the buffer. It
@@ -298,5 +297,14 @@ class CompositeDevice {
    * @return kLogiErrorNoError if no error, error code otherwise.
    */
   int GetComponentCount(int& count, const SystemTopology& topology);
+
+  /**
+   * @brief Check to see if MCU needs update or not.
+   * New Video firmware includes MCU image and update/reset MCU automatically
+   * @param skip_update True if update needed, False otherwise.
+   * @param device_name Name of the composite device.
+   * @return kLogiErrorNoError if no error, error code otherwise.
+   */
+  int CheckMCUUpdate(bool* skip_update, std::string device_name);
 };
 #endif /* SRC_COMPOSITE_DEVICE_H_ */
