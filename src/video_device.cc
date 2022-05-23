@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <linux/usb/video.h>
 #include <linux/uvcvideo.h>
+#include <linux/v4l2-controls.h>
 #include <linux/videodev2.h>
 #include <string>
 #include <sys/ioctl.h>
@@ -38,6 +39,38 @@ constexpr unsigned char kLogiDefaultAitSuccessValue = 0x00;
 constexpr unsigned char kLogiDefaultAitFailureValue = 0x82;
 // 32 byte size for updating each trunk.
 constexpr unsigned int kLogiDefaultImageBlockSize = 32;
+
+namespace {
+
+/* Returns true of is a valid video capture device, otherwise false. */
+bool IsCaptureDevice(int file_descriptor, const std::string& path) {
+  if (file_descriptor < 0) {
+    return false;
+  }
+
+  struct v4l2_capability caps;
+  int error = ioctl(file_descriptor, VIDIOC_QUERYCAP, &caps);
+  if (error < 0)  // ioctl return -1 on failure.
+    return false;
+
+  // If true, the driver determines the device capabilities field.
+  uint32_t dev_caps = (caps.capabilities & V4L2_CAP_DEVICE_CAPS)
+                          ? caps.device_caps
+                          : caps.capabilities;
+
+  // Valid capture devices should not additionally have OUTPUT capability
+  // Old drivers use (CAPTURE | OUTPUT) for memory-to-memory video devices.
+  const uint32_t kCaptureMask =
+      V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_CAPTURE_MPLANE;
+  const uint32_t kOutputMask =
+      V4L2_CAP_VIDEO_OUTPUT | V4L2_CAP_VIDEO_OUTPUT_MPLANE;
+  const uint32_t kM2mMask = V4L2_CAP_VIDEO_M2M | V4L2_CAP_VIDEO_M2M_MPLANE;
+
+  return (dev_caps & kCaptureMask) && !(dev_caps & kOutputMask) &&
+         !(dev_caps & kM2mMask);
+}
+
+}  //  namespace
 
 VideoDevice::VideoDevice(std::string pid) : USBDevice(pid, kLogiDeviceVideo) {}
 
@@ -70,8 +103,20 @@ int VideoDevice::OpenDevice() {
     LOG(ERROR) << "Failed to open device. Multiple device found.";
     return kLogiErrorMultipleDevicesFound;
   }
-  const char* dev_path = dev_paths.at(0).c_str();
-  int fd = open(dev_path, O_RDWR | O_NONBLOCK, 0);
+
+  int fd = -1;
+  for (std::string dev_path : dev_paths) {
+    fd = open(dev_path.c_str(), O_RDWR | O_NONBLOCK, 0);
+
+    if (fd < 0)
+      continue;
+
+    if (IsCaptureDevice(fd, dev_path))
+      break;
+
+    close(fd);
+  }
+
   if (fd == -1) {
     LOG(ERROR) << "Failed to open device. Open file failed.";
     return kLogiErrorOpenDeviceFailed;
