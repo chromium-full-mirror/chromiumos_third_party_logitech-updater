@@ -549,8 +549,9 @@ int main(int argc, char** argv) {
     case kLogiDeviceTypePTZPro2:
       composite_device = std::make_shared<CompositeDevice>(
           kLogiPtzPro2Pid, kLogiPtzPro2Pid, kLogiPtzPro2Pid);
+
+      CheckDeviceVersion(composite_device);
       if (FLAGS_device_version) {
-        CheckDeviceVersion(composite_device);
         LOG(INFO) << "Exiting updater with code: " << kLogiErrorNoError;
         return kLogiErrorNoError;  // Done here. Rest is N/A
       }
@@ -578,8 +579,9 @@ int main(int argc, char** argv) {
       composite_device = std::make_shared<CompositeDevice>();
       composite_device->AddDevice(kLogiDeviceVideo, kLogiPtzProVideoPid);
       composite_device->AddDevice(kLogiDeviceEeprom, kLogiPtzProVideoPid);
+
+      CheckDeviceVersion(composite_device);
       if (FLAGS_device_version) {
-        CheckDeviceVersion(composite_device);
         LOG(INFO) << "Exiting updater with code: " << kLogiErrorNoError;
         return kLogiErrorNoError;  // Done here. Rest is N/A
       }
@@ -613,8 +615,9 @@ int main(int argc, char** argv) {
       composite_device->AddDevice(kLogiDeviceCodec, kLogiMeetUpAudioPid);
       composite_device->AddDevice(kLogiDeviceBle, kLogiMeetUpAudioPid);
       composite_device->SetSupportBle(true);
+
+      CheckDeviceVersion(composite_device);
       if (FLAGS_device_version) {
-        CheckDeviceVersion(composite_device);
         LOG(INFO) << "Exiting updater with code: " << kLogiErrorNoError;
         return kLogiErrorNoError;  // Done here. Rest is N/A
       }
@@ -649,8 +652,9 @@ int main(int argc, char** argv) {
                                   kLogiRallyAudioDfuPid);
       composite_device->AddDevice(kLogiDeviceVideo, kLogiRallyVideoPid);
       composite_device->AddDevice(kLogiDeviceTableHub, kLogiRallyTableHubPid);
+
+      CheckDeviceVersion(composite_device);
       if (FLAGS_device_version) {
-        CheckDeviceVersion(composite_device);
         LOG(INFO) << "Exiting updater with code: " << kLogiErrorNoError;
         return kLogiErrorNoError;  // Done here. Rest is N/A
       }
@@ -680,8 +684,9 @@ int main(int argc, char** argv) {
       // Tap device.
       composite_device = std::make_shared<CompositeDevice>();
       composite_device->AddDevice(kLogiDeviceHdmi, kLogiTapHdmiPid);
+
+      CheckDeviceVersion(composite_device);
       if (FLAGS_device_version) {
-        CheckDeviceVersion(composite_device);
         LOG(INFO) << "Exiting updater with code: " << kLogiErrorNoError;
         return kLogiErrorNoError;  // Done here. Rest is N/A
       }
