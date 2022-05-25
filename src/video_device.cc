@@ -456,7 +456,7 @@ int VideoDevice::PerformUpdate(std::vector<uint8_t> buffer,
     LOG(INFO) << "Successfully updated " << name << " firmware.";
     *did_update = true;
   }
-  dfu_notification->NotifyEndUpdate(error);
+  dfu_notification->NotifyEndUpdate(!error);
   return error;
 }
 
