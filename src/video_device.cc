@@ -3,18 +3,23 @@
 // found in the LICENSE file.
 
 #include "video_device.h"
-#include <base/logging.h>
-#include <cfm-dfu-notification/idfu_notification.h>
+
 #include <fcntl.h>
 #include <linux/usb/video.h>
 #include <linux/uvcvideo.h>
 #include <linux/v4l2-controls.h>
 #include <linux/videodev2.h>
-#include <string>
 #include <sys/ioctl.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <thread>
+
+#include <base/logging.h>
+#include <cfm-dfu-notification/idfu_notification.h>
+
 #include "utilities.h"
 
 const char kDefaultVideoDeviceMountPoint[] = "/sys/class/video4linux";
