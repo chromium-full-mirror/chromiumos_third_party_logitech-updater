@@ -3,16 +3,20 @@
 // found in the LICENSE file.
 
 #include "audio_device.h"
-#include <base/logging.h>
-#include <fcntl.h>
-#include <linux/hidraw.h>
-#include <string.h>
-#include <stdio.h>
-#include <sys/ioctl.h>
+
 #include <algorithm>
-#include <thread>
 #include <chrono>
 #include <iostream>
+#include <thread>
+
+#include <base/logging.h>
+#include <cfm-dfu-notification/idfu_notification.h>
+#include <fcntl.h>
+#include <linux/hidraw.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/ioctl.h>
+
 #include "utilities.h"
 
 const char kDefaultAudioDfuModeVersion[] = "1.0.000";
@@ -325,7 +329,13 @@ int AudioDevice::PerformUpdate(std::vector<uint8_t> buffer,
     return kLogiErrorNoError;
   }
 
-  LOG(INFO) << "Updating audio firmware...";
+  LOG(INFO) << "Audio firmware is not up to date. Updating firmware...";
+
+  // Note: GetDeviceName here will return kLogiErrorDeviceNameNotAvailable
+  std::string device_name = "Logitech Camera Audio";
+  std::unique_ptr<IDfuNotification> dfu_notification =
+      IDfuNotification::For(device_name);
+  dfu_notification->NotifyStartUpdate();
 
   // Read BLE name before updating audio firmware if supported.
   int read_ble_error = kLogiErrorNoError;
@@ -336,6 +346,7 @@ int AudioDevice::PerformUpdate(std::vector<uint8_t> buffer,
   error = WaitForDfuDevice();
   if (error) {
     LOG(ERROR) << "Failed to wait for DFU device to come back. ";
+    dfu_notification->NotifyEndUpdate(false);
     return error;
   }
 
@@ -345,6 +356,7 @@ int AudioDevice::PerformUpdate(std::vector<uint8_t> buffer,
   if (error) {
     LOG(ERROR) << "Failed to read DFU API version in DFU mode. Error: "
                << error;
+    dfu_notification->NotifyEndUpdate(false);
     return error;
   }
   // Update firmware in DFU mode. Attempts to retry this step if failed.
@@ -357,6 +369,7 @@ int AudioDevice::PerformUpdate(std::vector<uint8_t> buffer,
   if (error) {
     LOG(ERROR) << "Failed to update firmware, out of attempts. Error: "
                << error;
+    dfu_notification->NotifyEndUpdate(false);
     return error;
   }
 
@@ -364,6 +377,7 @@ int AudioDevice::PerformUpdate(std::vector<uint8_t> buffer,
   error = VerifyDfuUpdateImage(buffer);
   if (error) {
     LOG(ERROR) << "Failed to verify updated image. Error: " << error;
+    dfu_notification->NotifyEndUpdate(false);
     return error;
   }
 
@@ -375,6 +389,7 @@ int AudioDevice::PerformUpdate(std::vector<uint8_t> buffer,
     LOG(INFO) << "Successfully updated audio firmware.";
     *did_update = true;
   }
+  dfu_notification->NotifyEndUpdate(!error);
 
   // Write BLE name if supported.
   if (support_ble_ && read_ble_error == kLogiErrorNoError)
