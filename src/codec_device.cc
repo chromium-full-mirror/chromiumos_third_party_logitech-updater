@@ -3,11 +3,15 @@
 // found in the LICENSE file.
 
 #include "codec_device.h"
-#include <base/logging.h>
-#include <linux/hidraw.h>
-#include <sys/ioctl.h>
+
 #include <algorithm>
 #include <thread>
+
+#include <base/logging.h>
+#include <cfm-dfu-notification/idfu_notification.h>
+#include <linux/hidraw.h>
+#include <sys/ioctl.h>
+
 #include "utilities.h"
 
 // HID report data of the address to read value from.
@@ -153,11 +157,19 @@ int CodecDevice::PerformUpdate(std::vector<uint8_t> buffer,
     return error;
 
   LOG(INFO) << "Codec firmware is not up to date. Updating firmware...";
+
+  // Note: GetDeviceName here will return kLogiErrorDeviceNameNotAvailable
+  std::string device_name = "Logitech Camera Codec";
+  std::unique_ptr<IDfuNotification> dfu_notification =
+      IDfuNotification::For(device_name);
+  dfu_notification->NotifyStartUpdate();
+
   // 1. Set device into firmware download mode.
   error = SetDownloadMode(kLogiReportNumberCodecSetCommand,
                           kLogiReportDataCodecSetDownloadMode);
   if (error) {
     LOG(ERROR) << "Failed to set device to download mode. Error: " << error;
+    dfu_notification->NotifyEndUpdate(false);
     return error;
   }
 
@@ -170,6 +182,7 @@ int CodecDevice::PerformUpdate(std::vector<uint8_t> buffer,
                             kLogiReportDataCodecSendFileSize, buffer_size);
   if (error) {
     LOG(ERROR) << "Failed to send image file size. Error: " << error;
+    dfu_notification->NotifyEndUpdate(false);
     return error;
   }
 
@@ -178,6 +191,7 @@ int CodecDevice::PerformUpdate(std::vector<uint8_t> buffer,
     error = SendHeaderImage(kLogiReportNumberCodecSetData, secure_header);
     if (error) {
       LOG(ERROR) << "Failed to send header image. Error: " << error;
+      dfu_notification->NotifyEndUpdate(false);
       return error;
     }
   }
@@ -185,6 +199,7 @@ int CodecDevice::PerformUpdate(std::vector<uint8_t> buffer,
   error = SendImage(kLogiReportNumberCodecSetData, buffer);
   if (error) {
     LOG(ERROR) << "Failed to send image to device. Error: " << error;
+    dfu_notification->NotifyEndUpdate(false);
     return error;
   }
   // Delays for image verification.
@@ -195,6 +210,7 @@ int CodecDevice::PerformUpdate(std::vector<uint8_t> buffer,
   error = VerifyUpdateImage(buffer);
   if (error) {
     LOG(ERROR) << "Failed to verify updated image. Error: " << error;
+    dfu_notification->NotifyEndUpdate(false);
     return error;
   }
   std::this_thread::sleep_for(
@@ -207,6 +223,9 @@ int CodecDevice::PerformUpdate(std::vector<uint8_t> buffer,
     LOG(INFO) << "Successfully updated codec firmware.";
     *did_update = true;
   }
+
+  dfu_notification->NotifyEndUpdate(!error);
+
   return error;
 }
 
