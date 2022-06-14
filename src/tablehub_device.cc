@@ -3,10 +3,7 @@
 // found in the LICENSE file.
 
 #include "tablehub_device.h"
-#include <base/logging.h>
-#include <cfm-dfu-notification/idfu_notification.h>
-#include <libusb.h>
-#include <stdio.h>
+
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -14,7 +11,13 @@
 #include <memory>
 #include <string>
 #include <thread>
+
 #include "base/strings/string_util.h"
+#include <base/logging.h>
+#include <cfm-dfu-notification/idfu_notification.h>
+#include <libusb.h>
+#include <stdio.h>
+
 #include "utilities.h"
 
 // device endpoints for bulk interface

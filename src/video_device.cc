@@ -4,14 +4,6 @@
 
 #include "video_device.h"
 
-#include <fcntl.h>
-#include <linux/usb/video.h>
-#include <linux/uvcvideo.h>
-#include <linux/v4l2-controls.h>
-#include <linux/videodev2.h>
-#include <sys/ioctl.h>
-#include <unistd.h>
-
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -19,6 +11,13 @@
 
 #include <base/logging.h>
 #include <cfm-dfu-notification/idfu_notification.h>
+#include <fcntl.h>
+#include <linux/usb/video.h>
+#include <linux/uvcvideo.h>
+#include <linux/v4l2-controls.h>
+#include <linux/videodev2.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
 
 #include "utilities.h"
 
