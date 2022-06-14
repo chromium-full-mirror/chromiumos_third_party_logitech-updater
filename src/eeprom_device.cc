@@ -8,6 +8,7 @@
 
 #include <base/logging.h>
 #include <cfm-dfu-notification/idfu_notification.h>
+
 #include "utilities.h"
 
 constexpr unsigned int kLogiEepromDeviceVersionDataSize = 2;
@@ -233,7 +234,7 @@ int EepromDevice::PerformUpdate(std::vector<uint8_t> buffer,
   if (error || !should_update)
     return error;
 
-  LOG(INFO) << "eeprom firmware is not up to date. Updating firmware...";
+  LOG(INFO) << "Eeprom firmware is not up to date. Updating firmware...";
 
   std::string device_name;
   GetDeviceName(&device_name);

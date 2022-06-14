@@ -3,11 +3,15 @@
 // found in the LICENSE file.
 
 #include "ble_device.h"
-#include <base/logging.h>
-#include <linux/hidraw.h>
-#include <sys/ioctl.h>
+
 #include <algorithm>
 #include <thread>
+
+#include <base/logging.h>
+#include <cfm-dfu-notification/idfu_notification.h>
+#include <linux/hidraw.h>
+#include <sys/ioctl.h>
+
 #include "utilities.h"
 
 // Default set command data size for BLE device.
@@ -126,25 +130,40 @@ int BleDevice::PerformUpdate(std::vector<uint8_t> buffer,
     return error;
 
   LOG(INFO) << "BLE firmware is not up to date. Updating firmware...";
+
+  // Note: GetDeviceName here will return kLogiErrorDeviceNameNotAvailable
+  std::string device_name = "Logitech Camera BLE";
+  std::unique_ptr<IDfuNotification> dfu_notification =
+      IDfuNotification::For(device_name);
+  dfu_notification->NotifyStartUpdate();
+
   // Send initial packet to the device.
   error = SendInitialPacket(buffer.size());
-  if (error)
+  if (error) {
+    dfu_notification->NotifyEndUpdate(false);
     return error;
+  }
 
   // Send checksum to the device.
   error = SendChecksum(buffer);
-  if (error)
+  if (error) {
+    dfu_notification->NotifyEndUpdate(false);
     return error;
+  }
 
   // Send image to the device.
   error = SendBleImage(buffer);
-  if (error)
+  if (error) {
+    dfu_notification->NotifyEndUpdate(false);
     return error;
+  }
 
   // Send stop-packet to device.
   error = SendStopPacket(buffer);
-  if (error)
+  if (error) {
+    dfu_notification->NotifyEndUpdate(false);
     return error;
+  }
 
   CloseDevice();
   error = WaitForHidDevice();
@@ -155,6 +174,9 @@ int BleDevice::PerformUpdate(std::vector<uint8_t> buffer,
     LOG(INFO) << "Successfully updated BLE firmware.";
     *did_update = true;
   }
+
+  dfu_notification->NotifyEndUpdate(!error);
+
   return kLogiErrorNoError;
 }
 
