@@ -261,6 +261,12 @@ int CompositeDevice::PerformComponentUpdate(bool* updated) {
   LOG(INFO) << "Checking " << name << " firmwares...";
   int error = kLogiErrorNoError;
 
+  // Device availibility is limited during upgrade.
+  // Query versions beforehand. Version query may fail in DFU mode
+  // Version needed only for CODEC, so safe to ignore other failures
+  std::map<int, std::string> info_map;
+  GetDevicesVersion(info_map);
+
   for (auto const& type : types) {
     std::shared_ptr<USBDevice> device = GetDeviceFromType(type);
     if (!device)
@@ -270,17 +276,13 @@ int CompositeDevice::PerformComponentUpdate(bool* updated) {
     // always forcefully upgrade codec firmware (if running 8.0.216)
     if (type == kLogiDeviceCodec) {
       if (name.find(kLogiMeetUpName) != std::string::npos) {
-        std::map<int, std::string> info_map;
-        error = GetDevicesVersion(info_map);
-        if (!error) {
-          if (info_map.find(kLogiDeviceCodec) != info_map.end()) {
-            if (CompareVersions(info_map[kLogiDeviceCodec],
-                                kLogiMeetUpOldCodecFirmwareVersion) == 0) {
-              LOG(WARNING) << "Device running older Codec firmware "
-                           << info_map[kLogiDeviceCodec].c_str()
-                           << ", upgrading forcefully";
-              device->force_update_ = true;
-            }
+        if (info_map.find(kLogiDeviceCodec) != info_map.end()) {
+          if (CompareVersions(info_map[kLogiDeviceCodec],
+                              kLogiMeetUpOldCodecFirmwareVersion) == 0) {
+            LOG(WARNING) << "Device running older Codec firmware "
+                         << info_map[kLogiDeviceCodec].c_str()
+                         << ", upgrading forcefully";
+            device->force_update_ = true;
           }
         }
       }
