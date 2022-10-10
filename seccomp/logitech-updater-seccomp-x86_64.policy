@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium OS Authors. All rights reserved.
+# Copyright 2018 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -42,8 +42,8 @@ getrlimit: 1
 ioctl: arg1 == 0x5401 || arg1 == 0xC0107521 || arg1 == 0x80685600 || arg1 == 0xC0054806 || arg1 == 0xC0054807 || arg1 == 0xC0064806 || arg1 == 0xC0064807 || arg1 == 0xC0284806 || arg1 == 0xC0284807 || arg1 == 0xC0404806 || arg1 == 0xC0404807 || arg1 == 0xC0424806 || arg1 == 0xC0424807 || arg1 == 0xC08D4806 || arg1 == 0xC08D4807 || arg1 == 0x5514 || arg1 == 0xC0304806 || arg1 == 0xC0414807 || arg1 == 0x8004551a || arg1 == 0x8004550f || arg1 == 0x4008550d || arg1 == 0x8038550a || arg1 == 0x80045510 || arg1 == 0xc2014807 || arg1 == 0x550b
 lseek: 1
 lstat:1
-mmap: 1
-mprotect: 1
+mmap: arg2 in ~PROT_EXEC || arg2 in ~PROT_WRITE
+mprotect: arg2 in ~PROT_EXEC || arg2 in ~PROT_WRITE
 munmap: 1
 nanosleep: 1
 newfstatat: 1
