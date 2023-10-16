@@ -198,7 +198,6 @@ int EepromDevice::SendImage(std::vector<S19Block> image_blocks) {
   if (image_blocks.empty())
     return kLogiErrorReadS19ImageByteFailed;
 
-  int bytes_written = 0;
   for (const auto& block : image_blocks) {
     for (const auto& data_pointer : block.Data) {
       const auto base_address = data_pointer.first;
@@ -215,7 +214,6 @@ int EepromDevice::SendImage(std::vector<S19Block> image_blocks) {
         if (attempts <= 0)
           return kLogiErrorSendImageFailed;
       }
-      bytes_written += data.size();
     }
   }
   return kLogiErrorNoError;
