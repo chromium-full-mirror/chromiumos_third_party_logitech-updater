@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium OS Authors. All rights reserved.
+// Copyright 2018 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -63,7 +63,7 @@ const char kLogiPtzPro2Mcu2ImagePath[] =
 const char kLogiMeetUpVideoImagePath[] =
     "/lib/firmware/logitech/meetup/meetup_video.bin";
 const char kLogiMeetUpEepromImagePath[] =
-    "/lib/firmware/logitech/meetup/meetup_eeprom.s19";
+    "/lib/firmware/logitech/meetup/meetup_eeprom.s19.bin";
 const char kLogiMeetUpAudioImagePath[] =
     "/lib/firmware/logitech/meetup/meetup_audio.bin";
 const char kLogiMeetUpCodecImagePath[] =
@@ -73,7 +73,7 @@ const char kLogiMeetUpBleImagePath[] =
 const char kLogiMeetUpAudioLogicoolImagePath[] =
     "/lib/firmware/logitech/meetup/meetup_audio_logicool.bin";
 const char kLogiMeetUpEepromLogicoolImagePath[] =
-    "/lib/firmware/logitech/meetup/meetup_eeprom_logicool.s19";
+    "/lib/firmware/logitech/meetup/meetup_eeprom_logicool.s19.bin";
 
 // PTZ Pro binary image paths.
 const char kLogiPtzProVideoImagePath[] =
@@ -157,7 +157,6 @@ void PrintVersions(std::map<int, std::string> info_map) {
   if (info_map.find(kLogiDeviceSplitter) != info_map.end())
     LOG(INFO) << "Mic Pod Hub version: "
               << info_map[kLogiDeviceSplitter].c_str();
-  std::cout << std::endl;
 }
 
 /**
@@ -179,7 +178,9 @@ void CheckDeviceVersion(std::shared_ptr<CompositeDevice> device) {
     error = device->GetDevicesVersion(info_map);
   }
   if (error) {
-    LOG(ERROR) << "Failed to read " << name.c_str() << " versions.";
+    logging::SystemErrorCode err = logging::GetLastSystemErrorCode();
+    LOG(ERROR) << "Failed to read " << name.c_str() << " versions: error code "
+               << logging::SystemErrorCodeToString(err) << "::" << error;
   } else {
     LOG(INFO) << "Device name:    " << name.c_str();
     PrintVersions(info_map);
@@ -201,7 +202,10 @@ void CheckImageVersion(std::shared_ptr<CompositeDevice> device,
     error = device->GetImagesVersion(info_map);
   }
   if (error) {
-    LOG(ERROR) << "Failed to read " << image_name << " image versions.";
+    logging::SystemErrorCode err = logging::GetLastSystemErrorCode();
+    LOG(ERROR) << "Failed to read " << image_name
+               << " image versions: error code "
+               << logging::SystemErrorCodeToString(err) << "::" << error;
   } else {
     LOG(INFO) << image_name << " Versions:";
     PrintVersions(info_map);

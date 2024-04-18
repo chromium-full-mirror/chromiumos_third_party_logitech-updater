@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium OS Authors. All rights reserved.
+// Copyright 2018 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -112,11 +112,15 @@ int VideoDevice::OpenDevice() {
   for (std::string dev_path : dev_paths) {
     fd = open(dev_path.c_str(), O_RDWR | O_NONBLOCK, 0);
 
-    if (fd < 0)
+    if (fd < 0) {
+      LOG(INFO) << "Failed to open " << dev_path.c_str();
       continue;
+    }
 
-    if (IsCaptureDevice(fd, dev_path))
+    if (IsCaptureDevice(fd, dev_path)) {
+      LOG(INFO) << "Found capture device at " << dev_path.c_str();
       break;
+    }
 
     close(fd);
   }
