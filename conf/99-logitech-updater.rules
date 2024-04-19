@@ -1,37 +1,50 @@
-# Copyright 2024 The ChromiumOS Authors
+# Copyright 2018 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
 # PTZ Pro 2 video device rule.
-SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="085f", \
-RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=5 --update_components --id=1"
-# PTZ Pro video device rule.
-SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="0853", \
-OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664"
-# No updater for PTZ Pro.
+SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", \
+  ENV{ID_MODEL_ID}=="085f", \
+  RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=5 --update_components --id=1"
+
+# # PTZ Pro video device rule.
+# SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", \
+# ENV{ID_MODEL_ID}=="0853"
+# # No updater for PTZ Pro.
+
 # MeetUp/Logi Group DFU audio device rule.
-SUBSYSTEM=="hidraw", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0859", \
-OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664", \
-RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=5 --update_dfu_audio --id=3"
+SUBSYSTEM=="hidraw", ACTION=="add", ATTRS{idVendor}=="046d", \
+  ATTRS{idProduct}=="0859", \
+  OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664", \
+  RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=5 --update_dfu_audio --id=3"
+
 # MeetUp HID audio device rule.
-SUBSYSTEM=="hidraw", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0867", \
-OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664", \
-RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=5 --update_components --id=4"
-# MeetUp video device rule
-SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="0866", \
-OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664"
-# Rally HID audio device rule.
-SUBSYSTEM=="hidraw", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0885", \
-OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664"
-# Rally DFU audio device rule.
-SUBSYSTEM=="hidraw", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0886", \
-OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664"
-# No updater for Rally.
-# Rally video device rule.
-SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="0881", \
-OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664"
-# Rally TableHub device rule.
-SUBSYSTEM=="usb", ACTION=="add", ATTR{idVendor}=="046d", ATTR{idProduct}=="088f", \
-OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664"
+SUBSYSTEM=="hidraw", ACTION=="add", ATTRS{idVendor}=="046d", \
+  ATTRS{idProduct}=="0867", \
+  OWNER="cfm-firmware-updaters", GROUP="cfm-firmware-updaters", MODE="0664", \
+  RUN+="/sbin/minijail0 -u cfm-firmware-updaters -G -e -i -l -r -n -p -v -S /usr/share/policy/logitech-updater-seccomp.policy /usr/sbin/logitech-updater --lock --delay=5 --update_components --id=4"
+
+# # MeetUp video device rule
+# SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", \
+#   ENV{ID_MODEL_ID}=="0866"
+
+# # Rally HID audio device rule.
+# SUBSYSTEM=="hidraw", ACTION=="add", ATTRS{idVendor}=="046d", \
+#   ATTRS{idProduct}=="0885"
+
+# # Rally DFU audio device rule.
+# SUBSYSTEM=="hidraw", ACTION=="add", ATTRS{idVendor}=="046d", \
+#   ATTRS{idProduct}=="0886"
+# # No updater for Rally.
+
+# # Rally video device rule.
+# SUBSYSTEM=="video4linux", ACTION=="add", ENV{ID_VENDOR_ID}=="046d", \
+#   ENV{ID_MODEL_ID}=="0881"
+
+# # Rally TableHub device rule.
+# SUBSYSTEM=="usb", ACTION=="add", ATTR{idVendor}=="046d", \
+#   ATTR{idProduct}=="088f"
 
 # Rally Mic rule for unique ALSA id.
-SUBSYSTEM=="sound", ACTION=="add", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0885", ATTR{id}="RallyMic"
+SUBSYSTEM=="sound", ACTION=="add", ATTRS{idVendor}=="046d", \
+  ATTRS{idProduct}=="0885", ATTR{id}="RallyMic"
