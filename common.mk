@@ -7,7 +7,7 @@
 #
 # NOTE NOTE NOTE
 #  The authoritative common.mk is located in:
-#    https://chromium.googlesource.com/chromiumos/platform2/+/master/common-mk
+#    https://chromium.googlesource.com/chromiumos/platform2/+/HEAD/common-mk
 #  Please make all changes there, then copy into place in other repos.
 # NOTE NOTE NOTE
 #
@@ -63,7 +63,7 @@
 #
 # Possible command line variables:
 #   - COLOR=[0|1] to set ANSI color output (default: 1)
-#   - VERBOSE=[0|1] to hide/show commands (default: 0)
+#   - VERBOSE=[0|1] V=[0|1] to hide/show commands (default: 0)
 #   - MODE=[opt|dbg|profiling] (default: opt)
 #          opt - Enable optimizations for release builds
 #          dbg - Turn down optimization for debugging
@@ -98,7 +98,8 @@ SPLITDEBUG ?= 0
 NOSTRIP ?= 1
 VALGRIND ?= 0
 COLOR ?= 1
-VERBOSE ?= 0
+V ?= 0
+VERBOSE ?= $(V)
 MODE ?= opt
 CXXEXCEPTIONS ?= 0
 RUN_TESTS ?= 1
@@ -122,11 +123,6 @@ override OUT := $(realpath $(OUT))/
 # SRC is not meant to be set by the end user, but during make call relocation.
 # $(PWD) != $(CURDIR) all the time.
 export SRC ?= $(CURDIR)
-
-# If BASE_VER is not set, read the libchrome revision number from
-# /usr/share/libchrome/BASE_VER
-BASE_VER := $(shell cat $(SYSROOT)/usr/share/libchrome/BASE_VER)
-$(info Using BASE_VER=$(BASE_VER))
 
 # Re-start in the $(OUT) directory if we're not there.
 # We may be invoked using -C or bare and we need to ensure behavior
@@ -264,13 +260,13 @@ $(eval $(call override_var,STRIP,strip))
 RMDIR ?= rmdir
 ECHO = /bin/echo -e
 
-ifeq ($(lastword $(subst /, ,$(CC))),clang)
+ifeq ($(filter clang,$(subst -, ,$(notdir $(CC)))),clang)
 CDRIVER = clang
 else
 CDRIVER = gcc
 endif
 
-ifeq ($(lastword $(subst /, ,$(CXX))),clang++)
+ifeq ($(filter clang++,$(subst -, ,$(notdir $(CXX)))),clang++)
 CXXDRIVER = clang
 else
 CXXDRIVER = gcc
@@ -316,11 +312,22 @@ endif
 #  CXXFLAGS := $(filter-out badflag,$(CXXFLAGS)) # Filter out a value
 # The same goes for CFLAGS.
 COMMON_CFLAGS-gcc := -fvisibility=internal -ggdb3 -Wa,--noexecstack
-COMMON_CFLAGS-clang := -fvisibility=hidden -ggdb
-COMMON_CFLAGS := -Wall -Wunused -Wno-unused-parameter -Werror -Wformat=2 \
-  -fno-strict-aliasing $(SSP_CFLAGS) -O1
+COMMON_CFLAGS-clang := -fvisibility=hidden -ggdb -Wimplicit-fallthrough \
+  -Wstring-plus-int
+# When a class is exported through __attribute__((visibility("default"))), we
+# still want to eliminate symbols from inline class member functions to reduce
+# symbol resolution overhead. Therefore, pass -fvisibility-inlines-hidden in
+# addition to -fvisibility=hidden. (go/cros-symbol-slimming)
+COMMON_CFLAGS := -Wall -Wunused -Wno-unused-parameter -Wunreachable-code \
+  -Wbool-operation -Wstring-compare -Wxor-used-as-pow \
+  -Wint-in-bool-context -Wfree-nonheap-object \
+  -Werror -Wformat=2 -fno-strict-aliasing -fvisibility-inlines-hidden \
+  $(SSP_CFLAGS) -O1
 CXXFLAGS += $(COMMON_CFLAGS) $(COMMON_CFLAGS-$(CXXDRIVER)) -std=gnu++20
-CFLAGS += $(COMMON_CFLAGS) $(COMMON_CFLAGS-$(CDRIVER)) -std=gnu11
+CFLAGS += $(COMMON_CFLAGS) $(COMMON_CFLAGS-$(CDRIVER)) -std=gnu17
+# We undefine _FORTIFY_SOURCE because some distros enable it by default in
+# their toolchains.  This makes the compiler issue warnings about redefines
+# and our -Werror usage breaks it all.
 CPPFLAGS += -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3
 
 # Enable large file support.
@@ -350,7 +357,11 @@ ifeq ($(MODE),profiling)
   LDFLAGS := $(LDFLAGS) --coverage
 endif
 
-LDFLAGS := $(LDFLAGS) -Wl,-z,relro -Wl,-z,noexecstack -Wl,-z,now
+# Pass -Bsymbolic-non-weak which pre-binds symbols in the same DSO to improve
+# startup performance. We don't support interposing non-weak symbols.
+# (go/cros-symbol-slimming)
+LDFLAGS := $(LDFLAGS) -Wl,-z,relro -Wl,-z,noexecstack -Wl,-z,now \
+  -Wl,-Bsymbolic-non-weak
 
 # Fancy helpers for color if a prompt is defined
 ifeq ($(COLOR),1)
@@ -590,13 +601,12 @@ $(1): %.o: %.pic.o %.pie.o
 	$$(QUIET)touch "$$@"
 endef
 
+# Wrap all the deps in $$(wildcard) so a missing header won't cause weirdness.
+# First we remove newlines and \, then wrap it.
 define OBJECT_PATTERN_implementation
   @$(ECHO) "$(1)		$(subst $(SRC)/,,$<) -> $(2).o"
   $(call auto_mkdir,$@)
   $(QUIET)$($(1)) -c -MD -MF $(2).d $(3) -o $(2).o $<
-  $(QUIET)# Wrap all the deps in $$(wildcard) so a missing header
-  $(QUIET)# won't cause weirdness.  First we remove newlines and \,
-  $(QUIET)# then wrap it.
   $(QUIET)sed -i -e :j -e '$$!N;s|\\\s*\n| |;tj' \
     -e 's|^\(.*\s*:\s*\)\(.*\)$$|\1 $$\(wildcard \2\)|' $(2).d
 endef
