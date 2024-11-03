@@ -43,6 +43,7 @@ ioctl: arg1 == 0x5401 || arg1 == 0xC0107521 || arg1 == 0x80685600 || arg1 == 0xC
 lseek: 1
 lstat:1
 mmap: arg2 in ~PROT_EXEC || arg2 in ~PROT_WRITE
+mseal: 1
 mprotect: arg2 in ~PROT_EXEC || arg2 in ~PROT_WRITE
 munmap: 1
 nanosleep: 1
