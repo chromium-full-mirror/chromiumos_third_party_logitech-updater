@@ -661,7 +661,9 @@ int CompositeDevice::CheckComponentsUpdated(
       LOG(ERROR) << "Polling update progress timed out.";
       return kLogiErrorTimeout;
     }
-    memset(&topology, '\0', sizeof(SystemTopology));
+    // Initialize SystemTopology calling default initializers for vectors and
+    // strings contained within it.
+    topology = SystemTopology{};
     if (!audio->IsPresent())
       continue;
     if (!audio->OpenDevice())
