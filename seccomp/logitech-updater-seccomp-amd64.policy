@@ -27,7 +27,7 @@ getrandom: 1
 getsockname: 1
 gettid: 1
 getrlimit: 1
-# ioctl: arg1 == TCGETS || arg1 == UVCIOC_CTRL_QUERY ||
+# ioctl: arg1 == TCGETS || arg1 == TCGETS2 || arg1 == UVCIOC_CTRL_QUERY ||
 #        arg1 == VIDIOC_QUERYCAP || arg1 == HIDIOCSFEATURE(5) ||
 #        arg1 == HIDIOCGFEATURE(5) || arg1 == HIDIOCSFEATURE(6) ||
 #        arg1 == HIDIOCGFEATURE(6) || arg1 == HIDIOCSFEATURE(40 ||
@@ -40,7 +40,7 @@ getrlimit: 1
 #        arg1 == USBDEVFS_REAPURBNDELAY || arg1 == USBDEVFS_SUBMITURB ||
 #        arg1 == USBDEVFS_RELEASEINTERFACE || arg1 == HIDIOCGFEATURE(513) ||
 #        arg1 == USBDEVFS_DISCARDURB
-ioctl: arg1 == 0x5401 || arg1 == 0xC0107521 || arg1 == 0x80685600 || arg1 == 0xC0054806 || arg1 == 0xC0054807 || arg1 == 0xC0064806 || arg1 == 0xC0064807 || arg1 == 0xC0284806 || arg1 == 0xC0284807 || arg1 == 0xC0404806 || arg1 == 0xC0404807 || arg1 == 0xC0424806 || arg1 == 0xC0424807 || arg1 == 0xC08D4806 || arg1 == 0xC08D4807 || arg1 == 0x5514 || arg1 == 0xC0304806 || arg1 == 0xC0414807 || arg1 == 0x8004551a || arg1 == 0x8004550f || arg1 == 0x4008550d || arg1 == 0x8038550a || arg1 == 0x80045510 || arg1 == 0xc2014807 || arg1 == 0x550b
+ioctl: arg1 == 0x5401 || arg1 == 0x802c542a || arg1 == 0xC0107521 || arg1 == 0x80685600 || arg1 == 0xC0054806 || arg1 == 0xC0054807 || arg1 == 0xC0064806 || arg1 == 0xC0064807 || arg1 == 0xC0284806 || arg1 == 0xC0284807 || arg1 == 0xC0404806 || arg1 == 0xC0404807 || arg1 == 0xC0424806 || arg1 == 0xC0424807 || arg1 == 0xC08D4806 || arg1 == 0xC08D4807 || arg1 == 0x5514 || arg1 == 0xC0304806 || arg1 == 0xC0414807 || arg1 == 0x8004551a || arg1 == 0x8004550f || arg1 == 0x4008550d || arg1 == 0x8038550a || arg1 == 0x80045510 || arg1 == 0xc2014807 || arg1 == 0x550b
 lseek: 1
 lstat:1
 mmap: arg2 in ~PROT_EXEC || arg2 in ~PROT_WRITE
